@@ -7,10 +7,10 @@
 #include "esp_lcd_panel_commands.h"
 #include "esp_lcd_panel_interface.h"
 #include "esp_lcd_panel_io.h"
-#include "esp_lcd_panel_ops.h"
-#include "esp_lcd_panel_vendor.h"
+//#include "esp_lcd_panel_ops.h"
+//#include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
+//#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "esp_lcd_ili9488.h"

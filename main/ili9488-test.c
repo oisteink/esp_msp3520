@@ -7,9 +7,20 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 static const char *TAG = "app";
+static SemaphoreHandle_t trans_done_sem;
+
+static bool on_color_trans_done(esp_lcd_panel_io_handle_t io,
+                                 esp_lcd_panel_io_event_data_t *edata,
+                                 void *user_ctx)
+{
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(trans_done_sem, &woken);
+    return woken;
+}
 
 #define LCD_H_RES 320
 #define LCD_V_RES 480
@@ -32,13 +43,14 @@ static void fill_screen(esp_lcd_panel_handle_t panel, uint8_t r, uint8_t g, uint
         buf[i * 3 + 2] = b;
     }
 
-    // Draw in bands
+    // Draw in bands, waiting for each DMA transfer to complete
     for (int y = 0; y < LCD_V_RES; y += BAND_LINES) {
         int y_end = y + BAND_LINES;
         if (y_end > LCD_V_RES) {
             y_end = LCD_V_RES;
         }
         esp_lcd_panel_draw_bitmap(panel, 0, y, LCD_H_RES, y_end, buf);
+        xSemaphoreTake(trans_done_sem, portMAX_DELAY);
     }
 
     free(buf);
@@ -68,6 +80,10 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
+    // Semaphore for waiting on DMA completion
+    trans_done_sem = xSemaphoreCreateBinary();
+    assert(trans_done_sem);
+
     // Panel IO
     ESP_LOGI(TAG, "installing panel IO");
     esp_lcd_panel_io_handle_t io_handle = NULL;
@@ -79,6 +95,7 @@ void app_main(void)
         .lcd_param_bits = 8,
         .spi_mode = 0,
         .trans_queue_depth = 10,
+        .on_color_trans_done = on_color_trans_done,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &io_cfg, &io_handle));
 
