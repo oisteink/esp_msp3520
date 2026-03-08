@@ -1,3 +1,7 @@
+## CRITICAL: Do not modify anything without permission
+
+Never change, add, or remove code, files, or content unless the user explicitly asks you to. This applies to all agents and sub-agents. If you see a problem, report it and ask for permission — do not fix it on your own. The user decides what gets changed.
+
 # Project: explore-tft-spi-touch
 
 ESP-IDF project exploring SPI TFT displays with touch input.
