@@ -1,0 +1,54 @@
+menu "ILI9488 Display Configuration"
+
+    orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
+
+    config LCD_SPI_SCLK_GPIO
+        int "SPI SCLK GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 6
+        help
+            GPIO number for the SPI clock line.
+
+    config LCD_SPI_MOSI_GPIO
+        int "SPI MOSI GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 7
+        help
+            GPIO number for the SPI MOSI line.
+
+    config LCD_CS_GPIO
+        int "LCD CS GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 20
+        help
+            GPIO number for the LCD chip select line.
+
+    config LCD_DC_GPIO
+        int "LCD DC GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 21
+        help
+            GPIO number for the LCD data/command line.
+
+    config LCD_RST_GPIO
+        int "LCD RST GPIO"
+        range -1 ENV_GPIO_OUT_RANGE_MAX
+        default 22
+        help
+            GPIO number for the LCD reset line. Set to -1 for software reset.
+
+    config LCD_BKL_GPIO
+        int "LCD backlight GPIO"
+        range -1 ENV_GPIO_OUT_RANGE_MAX
+        default 23
+        help
+            GPIO number for the LCD backlight. Set to -1 to disable.
+
+    config LCD_SPI_CLOCK_MHZ
+        int "SPI clock speed (MHz)"
+        range 1 40
+        default 20
+        help
+            SPI clock frequency in MHz for the LCD.
+
+endmenu
