@@ -1,78 +1,74 @@
-# Iteration 1: ILI9488 SPI Driver + Color Fill Demo
+# Iteration 2: LVGL Integration (Display Only)
 
 ## What we're building
 
-An ESP-IDF component driver for the ILI9488 (SPI interface) and a demo app that cycles the screen through solid red, green, and blue fills.
+Replace the color fill demo with an LVGL-driven UI showing a minimal custom screen — a label ("Hello LVGL") and a colored rectangle — proving LVGL renders correctly on the ILI9488 over SPI in landscape (480x320).
 
 ## Scope
 
-- **In scope**: ILI9488 SPI driver component, color fill demo app
-- **Out of scope**: touch (XPT2046 — next iteration), parallel 8080 interface, LVGL integration
+- **In scope**: LVGL init, display driver glue (flush callback, DMA buffers), tick timer, LVGL task, simple UI, landscape orientation
+- **Out of scope**: touch input (XPT2046 — next iteration), custom widgets, animations, `lv_conf.h` customization beyond defaults
 
 ## Hardware
 
-- **Display**: MSP3520 — 3.5" 480x320 ILI9488, SPI, resistive touch (touch unused this iteration)
-- **Board**: NanoESP32-C6 (RISC-V, 160 MHz, no PSRAM, ESP-IDF v5.5.3)
-- **Next board**: ESP32-S3-DevKitC-1 (arriving soon; driver must not be board-specific)
+- **Display**: MSP3520 — 3.5" 480x320 ILI9488, SPI (same as iteration 1)
+- **Board**: NanoESP32-C6 (RISC-V, 160 MHz, no PSRAM, ~512KB SRAM)
+- **Orientation**: Landscape (480x320) via MADCTL swap_xy + mirror
 
-## Driver requirements
+## Architecture
 
-### Interface
+Iteration 1's SPI + ILI9488 driver stack unchanged. New LVGL layer on top:
 
-The driver implements the `esp_lcd_panel_t` interface so it plugs into ESP-IDF's `esp_lcd` framework. Single public function:
-
-```c
-esp_err_t esp_lcd_new_panel_ili9488(
-    const esp_lcd_panel_io_handle_t io,
-    const esp_lcd_panel_dev_config_t *panel_dev_config,
-    esp_lcd_panel_handle_t *ret_panel);
+```
+LVGL (lv_timer_handler task)
+  → flush callback
+    → esp_lcd_panel_draw_bitmap
+      → SPI DMA
 ```
 
-### Panel operations
+### Color format
 
-All standard `esp_lcd_panel_t` callbacks:
+`LV_COLOR_FORMAT_RGB888` — 3 bytes/pixel. LVGL renders RGB888, ILI9488 accepts RGB666 over SPI (upper 6 bits of each byte used). No conversion needed in the flush callback.
 
-| Callback | Required |
-|----------|----------|
-| `del` | yes |
-| `reset` | yes (HW reset via GPIO, SW reset fallback) |
-| `init` | yes (full ILI9488 init sequence) |
-| `draw_bitmap` | yes |
-| `invert_color` | yes |
-| `mirror` | yes |
-| `swap_xy` | yes |
-| `set_gap` | yes |
-| `disp_on_off` | yes |
+### Buffers
 
-### Color mode
+Dual DMA buffers, partial rendering mode. Sized for C6 RAM constraints:
+- 320 pixels wide × 32 lines × 3 bytes = ~30KB per buffer
+- Two buffers = ~60KB total
+- Allocated via `spi_bus_dma_memory_alloc()` for DMA alignment
 
-- **18-bit color (RGB666)** — 3 bytes per pixel over SPI. This is the only color mode the ILI9488 supports over SPI (16-bit pixel format is parallel-only).
-- `bits_per_pixel` = 18 or 24 both map to RGB666 (24 = 3 bytes/pixel on the wire, upper 6 bits of each byte used).
+### Tick and task
 
-### Portability
+- 2ms ESP periodic timer calling `lv_tick_inc(2)`
+- FreeRTOS task running `lv_timer_handler()` in a loop
+- Mutex protects LVGL API calls
 
-- The driver depends only on ESP-IDF APIs (`esp_lcd`, `driver/gpio`, `freertos`). No board-specific code.
-- Pin assignments and SPI bus config live in the app, not the driver.
+### Flush completion
 
-## Demo app requirements
+`esp_lcd_panel_io_register_event_callbacks()` registers a callback that calls `lv_display_flush_ready()` when SPI DMA transfer completes.
 
-- Configure SPI bus and LCD panel IO for the NanoESP32-C6
-- Initialize the ILI9488 driver
-- Fill the entire screen with solid red, then green, then blue, cycling continuously
-- **Pin assignments and SPI config via Kconfig** (`main/Kconfig.projbuild`), accessible in code as `CONFIG_*` symbols. Provide `sdkconfig.defaults` with working values for the NanoESP32-C6.
-- Configurable items: SPI MOSI, SCLK, CS, DC, RST, backlight GPIOs; SPI clock speed
+## Changes from iteration 1
 
-Note: Espressif's own `spi_lcd_touch` example (ESP-IDF v5.5.3, `examples/peripherals/lcd/spi_lcd_touch/`) uses hardcoded `#define`s for pins and Kconfig only for controller selection. We go further by making pins configurable too — better for switching boards.
+- `main/ili9488-test.c` — full rewrite: LVGL init, flush/tick/task, simple UI
+- `main/CMakeLists.txt` — add `lvgl` to REQUIRES
+- ILI9488 driver component — no changes
+
+## Demo UI
+
+- White or light background
+- Centered label: "Hello LVGL"
+- Colored rectangle (e.g., blue filled box) to prove rendering works
 
 ## Acceptance criteria
 
-1. `idf.py build` succeeds with no warnings for the `esp32c6` target
-2. Flashing to the NanoESP32-C6 shows solid color fills cycling on the display
-3. The driver component has no board-specific code
-4. The driver implements all `esp_lcd_panel_t` callbacks listed above
+1. `idf.py build` succeeds with no warnings for `esp32c6`
+2. Display shows "Hello LVGL" label and a colored rectangle in landscape
+3. No crashes or memory exhaustion on the C6
+4. LVGL tick and task run continuously without watchdog triggers
 
-## Reference
+## References
 
-- Existing working driver: `~/src/zenith/zenith_components/esp_lcd_ili9488/` (usage in `~/src/zenith/zenit_core`)
-- Display datasheet/pinout: `docs/msp3520.md`
-- Board pinout: `docs/nanoesp32-c6.md`
+- Design doc: `docs/plans/2026-03-08-lvgl-integration-design.md`
+- Iteration 1 spec/plan: git history
+- Reference implementation: `~/src/zenith/zenith_components/zenith_display/`
+- LVGL v9.5.0 (managed component, already added as dependency)
