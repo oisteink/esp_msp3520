@@ -71,6 +71,13 @@ static void lvgl_tick_cb(void *arg)
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
 }
 
+/* -- Touch ISR handler --------------------------------------------- */
+
+static void IRAM_ATTR touch_isr_handler(void *arg)
+{
+    esp_lcd_touch_xpt2046_notify_touch();
+}
+
 /* -- Touch read callback ------------------------------------------- */
 
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
@@ -386,6 +393,11 @@ void app_main(void)
         },
     };
     ESP_ERROR_CHECK(esp_lcd_touch_new_spi_xpt2046(tp_io, &tp_cfg, &touch));
+
+    // Install GPIO ISR for touch interrupt
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(CONFIG_TOUCH_IRQ_GPIO, touch_isr_handler, NULL));
+    ESP_LOGI(TAG, "touch IRQ enabled on GPIO %d", CONFIG_TOUCH_IRQ_GPIO);
 
     // LVGL init
     ESP_LOGI(TAG, "initializing LVGL");

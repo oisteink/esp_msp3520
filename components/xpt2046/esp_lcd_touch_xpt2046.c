@@ -15,6 +15,7 @@
 // for portMUX_TYPE
 #include <esp_lcd_touch.h>
 #include <memory.h>
+#include <stdatomic.h>
 
 #include "sdkconfig.h"
 
@@ -63,6 +64,7 @@ static const uint16_t XPT2046_ADC_LIMIT = 4096;
 // counts@25C = TEMP0_mV / Vref_mv * XPT2046_ADC_LIMIT
 static const float XPT2046_TEMP0_COUNTS_AT_25C = (599.5 / 2507 * XPT2046_ADC_LIMIT);
 static uint16_t xpt2046_z_threshold = CONFIG_XPT2046_Z_THRESHOLD;
+static atomic_bool xpt2046_touch_pending = false;
 static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp);
 static bool xpt2046_get_xy(esp_lcd_touch_handle_t tp,
                            uint16_t *x, uint16_t *y,
@@ -70,6 +72,11 @@ static bool xpt2046_get_xy(esp_lcd_touch_handle_t tp,
                            uint8_t *point_num,
                            uint8_t max_point_num);
 static esp_err_t xpt2046_del(esp_lcd_touch_handle_t tp);
+
+void IRAM_ATTR esp_lcd_touch_xpt2046_notify_touch(void)
+{
+    atomic_store(&xpt2046_touch_pending, true);
+}
 
 esp_err_t esp_lcd_touch_new_spi_xpt2046(const esp_lcd_panel_io_handle_t io,
                                         const esp_lcd_touch_config_t *config,
@@ -172,20 +179,15 @@ static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp)
     uint8_t point_count = 0;
 
 #ifdef CONFIG_XPT2046_INTERRUPT_MODE
-    if (tp->config.int_gpio_num != GPIO_NUM_NC)
+    if (!atomic_exchange(&xpt2046_touch_pending, false))
     {
-        // Check the PENIRQ pin to see if there is a touch
-        if (gpio_get_level(tp->config.int_gpio_num))
-        {
-            XPT2046_LOCK(&tp->data.lock);
-            tp->data.coords[0].x = 0;
-            tp->data.coords[0].y = 0;
-            tp->data.coords[0].strength = 0;
-            tp->data.points = 0;
-            XPT2046_UNLOCK(&tp->data.lock);
-
-            return ESP_OK;
-        }
+        XPT2046_LOCK(&tp->data.lock);
+        tp->data.coords[0].x = 0;
+        tp->data.coords[0].y = 0;
+        tp->data.coords[0].strength = 0;
+        tp->data.points = 0;
+        XPT2046_UNLOCK(&tp->data.lock);
+        return ESP_OK;
     }
 #endif
 

@@ -9,13 +9,11 @@ menu "XPT2046"
 
     config XPT2046_INTERRUPT_MODE
         bool "Enable Interrupt (PENIRQ) output"
-        default n
+        default y
         help
-            Also called Full Power Mode.
-            Enable this to configure the XPT2046 to output low on the PENIRQ output
-            if a touch is detected.
-            This mode uses more power when enabled.
-            Note that this signal goes low normally when a read is active.
+            Enable PENIRQ output from XPT2046. When enabled, the IRQ pin
+            goes low when the screen is touched. Required for IRQ-driven
+            touch detection to avoid continuous SPI polling.
 
     config XPT2046_VREF_ON_MODE
         bool "Keep internal Vref enabled"

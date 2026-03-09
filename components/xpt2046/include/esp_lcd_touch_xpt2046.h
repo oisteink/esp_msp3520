@@ -220,6 +220,11 @@ esp_err_t esp_lcd_touch_xpt2046_read_temp1_level(const esp_lcd_touch_handle_t ha
 void esp_lcd_touch_xpt2046_set_z_threshold(uint16_t threshold);
 uint16_t esp_lcd_touch_xpt2046_get_z_threshold(void);
 
+/**
+ * @brief Notify the driver that a touch event is pending (call from ISR)
+ */
+void esp_lcd_touch_xpt2046_notify_touch(void);
+
 #ifdef __cplusplus
 }
 #endif
