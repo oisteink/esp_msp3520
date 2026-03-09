@@ -16,6 +16,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "touch_calibration.h"
+#include "nvs_flash.h"
 
 static const char *TAG = "app";
 
@@ -44,6 +46,7 @@ typedef struct {
     bool swap_xy;
     bool mirror_x;
     bool mirror_y;
+    touch_cal_t cal;
 } app_context_t;
 
 static app_context_t app_ctx;
@@ -96,10 +99,18 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &count, 1);
 
     if (count > 0) {
-        data->point.x = x;
-        data->point.y = y;
+        if (app_ctx.cal.valid) {
+            uint16_t sx, sy;
+            touch_cal_apply(&app_ctx.cal, x, y, &sx, &sy, LCD_H_RES, LCD_V_RES);
+            data->point.x = sx;
+            data->point.y = sy;
+            ESP_LOGD(TAG, "touch: raw=%d,%d cal=%d,%d", x, y, sx, sy);
+        } else {
+            data->point.x = x;
+            data->point.y = y;
+            ESP_LOGD(TAG, "touch: raw=%d,%d (uncalibrated)", x, y);
+        }
         data->state = LV_INDEV_STATE_PRESSED;
-        ESP_LOGI(TAG, "touch: x=%d y=%d (poll #%lu)", x, y, (unsigned long)poll_count);
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
@@ -308,6 +319,14 @@ static void create_ui(void)
 
 void app_main(void)
 {
+    // Initialize NVS
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
+
     // Backlight
     if (CONFIG_LCD_BKL_GPIO >= 0) {
         gpio_config_t bkl_cfg = {
@@ -456,6 +475,14 @@ void app_main(void)
     app_ctx.swap_xy = false;
     app_ctx.mirror_x = true;
     app_ctx.mirror_y = true;
+
+    // Load touch calibration from NVS
+    touch_cal_load(&app_ctx.cal);
+    if (app_ctx.cal.valid) {
+        ESP_LOGI(TAG, "Touch calibration loaded");
+    } else {
+        ESP_LOGI(TAG, "No touch calibration found, using raw coordinates");
+    }
 
     ESP_LOGI(TAG, "starting console");
     esp_console_repl_t *repl = NULL;
