@@ -58,4 +58,18 @@ menu "ILI9488 Display Configuration"
         help
             SPI clock frequency in MHz for the LCD.
 
+    config TOUCH_CS_GPIO
+        int "Touch CS GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 4
+        help
+            GPIO number for the XPT2046 touch chip select.
+
+    config TOUCH_IRQ_GPIO
+        int "Touch IRQ GPIO"
+        range -1 ENV_GPIO_OUT_RANGE_MAX
+        default 5
+        help
+            GPIO number for the XPT2046 touch interrupt. Set to -1 to disable.
+
 endmenu

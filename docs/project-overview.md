@@ -39,6 +39,28 @@ idf.py reconfigure
 Current dependencies:
 - **`lvgl/lvgl^9.5.0`** — graphics library (for future iterations)
 
+## Wiring: ESP32-S3 DevKitC-1 ↔ MSP3520
+
+VCC powered from 5V (3.3V too weak for backlight). All IO is 3.3V TTL.
+Display and touch share SPI bus (SPI2) via breadboard, with separate CS lines.
+
+| Pin | Screen Label | Wire To | GPIO |
+|-----|-------------|---------|------|
+| 1 | VCC | 5V | - |
+| 2 | GND | GND | - |
+| 3 | CS | S3 | 3 |
+| 4 | RESET | S3 | 46 |
+| 5 | DC/RS | S3 | 9 |
+| 6 | SDI (MOSI) | breadboard | 10 |
+| 7 | SCK | breadboard | 11 |
+| 8 | LED | S3 | 12 |
+| 9 | SDO (MISO) | breadboard | 13 |
+| 10 | T_CLK | breadboard | (11) |
+| 11 | T_CS | S3 | 4 |
+| 12 | T_DIN | breadboard | (10) |
+| 13 | T_DO | breadboard | (13) |
+| 14 | T_IRQ | S3 | 5 |
+
 ## Build
 
 ```sh
