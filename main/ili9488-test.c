@@ -9,6 +9,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_touch_xpt2046.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -74,6 +75,12 @@ static void lvgl_tick_cb(void *arg)
 
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
+    static uint32_t poll_count = 0;
+    poll_count++;
+    if (poll_count % 500 == 0) {
+        ESP_LOGI(TAG, "touch poll #%lu (alive)", (unsigned long)poll_count);
+    }
+
     esp_lcd_touch_handle_t touch = lv_indev_get_user_data(indev);
     esp_lcd_touch_read_data(touch);
 
@@ -85,7 +92,7 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         data->point.x = x;
         data->point.y = y;
         data->state = LV_INDEV_STATE_PRESSED;
-        ESP_LOGD(TAG, "touch: x=%d y=%d", x, y);
+        ESP_LOGI(TAG, "touch: x=%d y=%d (poll #%lu)", x, y, (unsigned long)poll_count);
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
@@ -95,6 +102,7 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
 static void lvgl_task(void *arg)
 {
+    ESP_LOGI(TAG, "LVGL task started");
     uint32_t time_threshold_ms = 1000 / CONFIG_FREERTOS_HZ;
     while (1) {
         _lock_acquire(&lvgl_lock);
@@ -210,7 +218,7 @@ static int cmd_debug(int argc, char **argv)
     esp_log_level_t lvl = debug_on ? ESP_LOG_DEBUG : ESP_LOG_INFO;
     esp_log_level_set("app", lvl);
     esp_log_level_set("ili9488", lvl);
-    esp_log_level_set("XPT2046", lvl);
+    esp_log_level_set("xpt2046", lvl);
     printf("Debug %s\n", debug_on ? "ON" : "OFF");
     return 0;
 }
@@ -323,11 +331,23 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-    // Touch panel IO (same SPI bus, separate CS)
+    // Touch SPI bus (SPI3, dedicated for touch)
+    ESP_LOGI(TAG, "initializing touch SPI bus (SPI3)");
+    spi_bus_config_t touch_bus_cfg = {
+        .sclk_io_num = CONFIG_TOUCH_SPI_SCLK_GPIO,
+        .mosi_io_num = CONFIG_TOUCH_SPI_MOSI_GPIO,
+        .miso_io_num = CONFIG_TOUCH_SPI_MISO_GPIO,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 0,
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &touch_bus_cfg, SPI_DMA_CH_AUTO));
+
+    // Touch panel IO (SPI3, dedicated bus)
     ESP_LOGI(TAG, "installing touch panel IO");
     esp_lcd_panel_io_handle_t tp_io = NULL;
     esp_lcd_panel_io_spi_config_t tp_io_cfg = ESP_LCD_TOUCH_IO_SPI_XPT2046_CONFIG(CONFIG_TOUCH_CS_GPIO);
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI2_HOST, &tp_io_cfg, &tp_io));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(SPI3_HOST, &tp_io_cfg, &tp_io));
 
     // Touch driver
     ESP_LOGI(TAG, "installing XPT2046 touch driver");
@@ -355,10 +375,10 @@ void app_main(void)
     lv_display_set_user_data(disp, panel);
     lv_display_set_flush_cb(disp, lvgl_flush_cb);
 
-    // Allocate DMA-safe draw buffers
-    void *buf1 = spi_bus_dma_memory_alloc(SPI2_HOST, buf_sz, 0);
+    // Allocate draw buffers from PSRAM
+    void *buf1 = heap_caps_malloc(buf_sz, MALLOC_CAP_SPIRAM);
     assert(buf1);
-    void *buf2 = spi_bus_dma_memory_alloc(SPI2_HOST, buf_sz, 0);
+    void *buf2 = heap_caps_malloc(buf_sz, MALLOC_CAP_SPIRAM);
     assert(buf2);
     lv_display_set_buffers(disp, buf1, buf2, buf_sz,
                             LV_DISPLAY_RENDER_MODE_PARTIAL);

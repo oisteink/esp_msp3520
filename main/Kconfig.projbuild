@@ -58,6 +58,27 @@ menu "ILI9488 Display Configuration"
         help
             SPI clock frequency in MHz for the LCD.
 
+    config TOUCH_SPI_SCLK_GPIO
+        int "Touch SPI SCLK GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 6
+        help
+            GPIO number for the touch SPI clock (SPI3, separate from display).
+
+    config TOUCH_SPI_MOSI_GPIO
+        int "Touch SPI MOSI GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 7
+        help
+            GPIO number for the touch SPI MOSI (SPI3, separate from display).
+
+    config TOUCH_SPI_MISO_GPIO
+        int "Touch SPI MISO GPIO"
+        range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+        default 8
+        help
+            GPIO number for the touch SPI MISO (SPI3, separate from display).
+
     config TOUCH_CS_GPIO
         int "Touch CS GPIO"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
