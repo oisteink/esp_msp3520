@@ -200,52 +200,68 @@ static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp)
     if (z >= xpt2046_z_threshold)
     {
         uint16_t discard_buf = 0;
-
         // read and discard a value as it is usually not reliable.
         ESP_RETURN_ON_ERROR(xpt2046_read_register(tp, X_POSITION, &discard_buf),
                             TAG, "XPT2046 read error!");
 
-        for (uint8_t idx = 0; idx < CONFIG_ESP_LCD_TOUCH_MAX_POINTS; idx++)
+        // Take 5 samples for median filtering
+        #define NUM_SAMPLES 5
+        uint16_t x_samples[NUM_SAMPLES];
+        uint16_t y_samples[NUM_SAMPLES];
+        uint8_t valid = 0;
+
+        for (uint8_t idx = 0; idx < NUM_SAMPLES; idx++)
         {
             uint16_t x_temp = 0;
             uint16_t y_temp = 0;
-            // Read X position and convert returned data to 12bit value
             ESP_RETURN_ON_ERROR(xpt2046_read_register(tp, X_POSITION, &x_temp),
                                 TAG, "XPT2046 read error!");
-            // drop lowest three bits to convert to 12-bit position
             x_temp >>= 3;
 
-            // Read Y position and convert returned data to 12bit value
             ESP_RETURN_ON_ERROR(xpt2046_read_register(tp, Y_POSITION, &y_temp),
                                 TAG, "XPT2046 read error!");
-            // drop lowest three bits to convert to 12-bit position
             y_temp >>= 3;
 
-            // Test if the readings are valid (50 < reading < max - 50)
-            if ((x_temp >= 50) && (x_temp <= XPT2046_ADC_LIMIT - 50) && (y_temp >= 50) && (y_temp <= XPT2046_ADC_LIMIT - 50))
+            if ((x_temp >= 50) && (x_temp <= XPT2046_ADC_LIMIT - 50) &&
+                (y_temp >= 50) && (y_temp <= XPT2046_ADC_LIMIT - 50))
             {
-#if CONFIG_XPT2046_CONVERT_ADC_TO_COORDS
-                // Convert the raw ADC value into a screen coordinate and store it
-                // for averaging.
-                x += ((x_temp / (double)XPT2046_ADC_LIMIT) * tp->config.x_max);
-                y += ((y_temp / (double)XPT2046_ADC_LIMIT) * tp->config.y_max);
-#else
-                // store the raw ADC values and let the user convert them to screen
-                // coordinates.
-                x += x_temp;
-                y += y_temp;
-#endif // CONFIG_XPT2046_CONVERT_ADC_TO_COORDS
-                point_count++;
+                x_samples[valid] = x_temp;
+                y_samples[valid] = y_temp;
+                valid++;
             }
         }
 
-        // Check we had enough valid values
-        const int minimum_count = (1 == CONFIG_ESP_LCD_TOUCH_MAX_POINTS ? 1 : CONFIG_ESP_LCD_TOUCH_MAX_POINTS/2);
-        if (point_count >= minimum_count)
+        // Need at least 3 valid samples for outlier rejection
+        if (valid >= 3)
         {
-            // Average the accumulated coordinate data points.
-            x /= point_count;
-            y /= point_count;
+            // Simple insertion sort for small arrays
+            for (uint8_t i = 1; i < valid; i++) {
+                uint16_t kx = x_samples[i], ky = y_samples[i];
+                int8_t j = i - 1;
+                while (j >= 0 && x_samples[j] > kx) {
+                    x_samples[j + 1] = x_samples[j];
+                    y_samples[j + 1] = y_samples[j];
+                    j--;
+                }
+                x_samples[j + 1] = kx;
+                y_samples[j + 1] = ky;
+            }
+
+            // Discard first and last (outliers), average the middle
+            uint32_t x_sum = 0, y_sum = 0;
+            uint8_t mid_count = valid - 2;
+            for (uint8_t i = 1; i <= mid_count; i++) {
+                x_sum += x_samples[i];
+                y_sum += y_samples[i];
+            }
+
+#if CONFIG_XPT2046_CONVERT_ADC_TO_COORDS
+            x = (uint32_t)(((double)x_sum / mid_count / (double)XPT2046_ADC_LIMIT) * tp->config.x_max);
+            y = (uint32_t)(((double)y_sum / mid_count / (double)XPT2046_ADC_LIMIT) * tp->config.y_max);
+#else
+            x = x_sum / mid_count;
+            y = y_sum / mid_count;
+#endif
             point_count = 1;
         }
         else
