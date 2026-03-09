@@ -6,11 +6,15 @@ Never change, add, or remove code, files, or content unless the user explicitly 
 
 ESP-IDF project exploring SPI TFT displays with touch input.
 
+**Current state:** ESP32-S3 driving ILI9488 display + XPT2046 touch over shared SPI bus, with LVGL v9.5 UI. Portrait mode (320x480).
+
 ## Environment
 
 - **Framework**: ESP-IDF v5.5.3
+- **Target**: ESP32-S3 (DevKitC-1)
 - **Setup**: `source ~/esp/v5.5.3/esp-idf/export.sh`
 - **Hardware docs**: `docs/` (one markdown file per component)
+- **Wiring**: `docs/project-overview.md` (full pinout table)
 
 ## Development Process
 

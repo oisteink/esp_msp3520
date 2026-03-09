@@ -6,6 +6,8 @@
 ├── CMakeLists.txt              # Top-level ESP-IDF project file
 ├── main/                       # Application
 │   ├── CMakeLists.txt
+│   ├── idf_component.yml       # Managed component dependencies
+│   ├── Kconfig.projbuild       # Pin and config menu
 │   └── ili9488-test.c          # Entry point (app_main)
 ├── components/
 │   └── esp_lcd_ili9488/        # ILI9488 display driver (local component)
@@ -13,18 +15,25 @@
 │       ├── esp_lcd_ili9488.c
 │       └── include/
 │           └── esp_lcd_ili9488.h
+├── managed_components/         # Downloaded by ESP Component Manager
+│   ├── atanisoft__esp_lcd_touch_xpt2046/
+│   ├── espressif__esp_lcd_touch/
+│   └── lvgl__lvgl/
+├── iteration/                  # Current iteration stage docs
+│   └── history/                # Archived iteration docs
+│       ├── iteration-1/
+│       ├── iteration-2/
+│       └── iteration-3/
 └── docs/                       # Hardware datasheets and project docs
 ```
 
 ## How it fits together
 
-This is a standard ESP-IDF project with two build units:
+This is a standard ESP-IDF project targeting the **ESP32-S3**.
 
-- **`main/`** — The application. Contains `app_main()` and will eventually set up SPI, initialize the display, and run demo/UI code. This is where we wire everything together.
+- **`main/`** — The application. Sets up SPI, initializes display and touch, runs LVGL with an interactive UI. Pin assignments are configurable via Kconfig.
 
-- **`components/esp_lcd_ili9488/`** — A local ESP-IDF component providing the ILI9488 driver. ESP-IDF automatically discovers components in the `components/` directory and makes them available to `main/`. The component exposes its public API through `include/esp_lcd_ili9488.h`.
-
-The app depends on the driver, not the other way around. The driver component should only depend on ESP-IDF APIs (SPI, GPIO, esp_lcd) so it stays reusable.
+- **`components/esp_lcd_ili9488/`** — Local ILI9488 driver using the `esp_lcd` panel interface. RGB888 passthrough (no color conversion), 3-param API. Only depends on ESP-IDF APIs so it stays reusable.
 
 ## External Components
 
@@ -37,7 +46,8 @@ idf.py reconfigure
 ```
 
 Current dependencies:
-- **`lvgl/lvgl^9.5.0`** — graphics library (for future iterations)
+- **`lvgl/lvgl^9.5.0`** — Graphics library, LVGL v9.5 with RGB888 color format
+- **`atanisoft/esp_lcd_touch_xpt2046^1.0.0`** — XPT2046 resistive touch driver (pulls in `espressif/esp_lcd_touch` as transitive dependency)
 
 ## Wiring: ESP32-S3 DevKitC-1 ↔ MSP3520
 
