@@ -217,6 +217,9 @@ esp_err_t esp_lcd_touch_xpt2046_read_temp0_level(const esp_lcd_touch_handle_t ha
  */
 esp_err_t esp_lcd_touch_xpt2046_read_temp1_level(const esp_lcd_touch_handle_t handle, float *output);
 
+void esp_lcd_touch_xpt2046_set_z_threshold(uint16_t threshold);
+uint16_t esp_lcd_touch_xpt2046_get_z_threshold(void);
+
 #ifdef __cplusplus
 }
 #endif

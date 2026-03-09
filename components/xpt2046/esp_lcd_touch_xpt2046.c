@@ -62,6 +62,7 @@ static const uint16_t XPT2046_ADC_LIMIT = 4096;
 // Vref is approx 2.507V = 2507mV at moderate temperatures (refer p8 Vref vs Temperature chart)
 // counts@25C = TEMP0_mV / Vref_mv * XPT2046_ADC_LIMIT
 static const float XPT2046_TEMP0_COUNTS_AT_25C = (599.5 / 2507 * XPT2046_ADC_LIMIT);
+static uint16_t xpt2046_z_threshold = CONFIG_XPT2046_Z_THRESHOLD;
 static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp);
 static bool xpt2046_get_xy(esp_lcd_touch_handle_t tp,
                            uint16_t *x, uint16_t *y,
@@ -196,7 +197,7 @@ static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp)
 
     // If the Z (pressure) exceeds the threshold it is likely the user has
     // pressed the screen, read in and average the positions.
-    if (z >= CONFIG_XPT2046_Z_THRESHOLD)
+    if (z >= xpt2046_z_threshold)
     {
         uint16_t discard_buf = 0;
 
@@ -306,6 +307,16 @@ static bool xpt2046_get_xy(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y,
     }
 
     return (*point_num > 0);
+}
+
+void esp_lcd_touch_xpt2046_set_z_threshold(uint16_t threshold)
+{
+    xpt2046_z_threshold = threshold;
+}
+
+uint16_t esp_lcd_touch_xpt2046_get_z_threshold(void)
+{
+    return xpt2046_z_threshold;
 }
 
 esp_err_t esp_lcd_touch_xpt2046_read_battery_level(const esp_lcd_touch_handle_t handle, float *output)

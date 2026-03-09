@@ -223,6 +223,27 @@ static int cmd_debug(int argc, char **argv)
     return 0;
 }
 
+static int cmd_touch_cfg(int argc, char **argv)
+{
+    if (argc == 1) {
+        printf("z_threshold=%u\n", esp_lcd_touch_xpt2046_get_z_threshold());
+        return 0;
+    }
+    if (argc != 3) {
+        printf("Usage: touch_cfg z_threshold <value>\n");
+        return 1;
+    }
+    if (strcmp(argv[1], "z_threshold") == 0) {
+        uint16_t val = (uint16_t)atoi(argv[2]);
+        esp_lcd_touch_xpt2046_set_z_threshold(val);
+        printf("Set z_threshold=%u\n", val);
+    } else {
+        printf("Unknown param: %s\n", argv[1]);
+        return 1;
+    }
+    return 0;
+}
+
 /* -- UI ------------------------------------------------------------ */
 
 static void btn_event_cb(lv_event_t *e)
@@ -448,6 +469,9 @@ void app_main(void)
         .func_w_context = cmd_rotation, .context = &app_ctx });
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "debug", .help = "Toggle debug logging", .func = cmd_debug });
+    esp_console_cmd_register(&(esp_console_cmd_t){
+        .command = "touch_cfg", .help = "Get/set touch config",
+        .hint = "[z_threshold] [value]", .func = cmd_touch_cfg });
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
