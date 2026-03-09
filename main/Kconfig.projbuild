@@ -16,6 +16,13 @@ menu "ILI9488 Display Configuration"
         help
             GPIO number for the SPI MOSI line.
 
+    config LCD_SPI_MISO_GPIO
+        int "SPI MISO GPIO"
+        range -1 ENV_GPIO_OUT_RANGE_MAX
+        default -1
+        help
+            GPIO number for the SPI MISO line. Set to -1 if not connected.
+
     config LCD_CS_GPIO
         int "LCD CS GPIO"
         range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX

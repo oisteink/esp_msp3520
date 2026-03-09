@@ -1,3 +1,55 @@
+# LVGL Integration (Display Only) Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Replace the color fill demo with an LVGL-driven UI showing "Hello LVGL" and a colored rectangle in landscape (480x320).
+
+**Architecture:** LVGL v9.5 renders RGB888 into dual DMA buffers. A flush callback passes dirty regions to `esp_lcd_panel_draw_bitmap()`. SPI DMA completion signals `lv_display_flush_ready()`. ESP timer drives `lv_tick_inc()`. A FreeRTOS task runs `lv_timer_handler()`.
+
+**Tech Stack:** ESP-IDF v5.5.3, LVGL v9.5.0 (managed component), esp_lcd, SPI, C
+
+**References:**
+- Spec: `iteration/spec.md`
+- Research: `iteration/research.md`
+- Reference: `~/src/zenith/zenith_components/zenith_display/zenith_display.c`
+
+---
+
+### Task 1: Update Build Configuration
+
+**Files:**
+- Modify: `main/CMakeLists.txt`
+
+**Step 1: Add lvgl to REQUIRES**
+
+```cmake
+idf_component_register(SRCS "ili9488-test.c"
+                    INCLUDE_DIRS "."
+                    REQUIRES "esp_lcd_ili9488" "esp_driver_spi" "lvgl")
+```
+
+**Step 2: Build to verify LVGL links**
+
+Run: `source ~/esp/v5.5.3/esp-idf/export.sh && idf.py build`
+Expected: Build succeeds (app code unchanged, just verifying LVGL links)
+
+**Step 3: Commit**
+
+```bash
+git add main/CMakeLists.txt
+git commit -m "chore: add lvgl dependency to main component"
+```
+
+---
+
+### Task 2: Rewrite App with LVGL Integration
+
+**Files:**
+- Modify: `main/ili9488-test.c`
+
+**Step 1: Replace the entire file**
+
+```c
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -13,13 +65,13 @@
 
 static const char *TAG = "app";
 
-// Display dimensions (portrait native)
-#define LCD_H_RES          320
-#define LCD_V_RES          480
+// Display dimensions (landscape)
+#define LCD_H_RES          480
+#define LCD_V_RES          320
 #define LCD_BPP            3   // bytes per pixel (RGB888/RGB666)
 
 // LVGL draw buffer: 1/10 of screen height
-#define LVGL_DRAW_BUF_LINES  (LCD_V_RES / 4)
+#define LVGL_DRAW_BUF_LINES  (LCD_V_RES / 10)
 
 // LVGL tick period
 #define LVGL_TICK_PERIOD_MS   2
@@ -30,7 +82,7 @@ static const char *TAG = "app";
 
 static _lock_t lvgl_lock;
 
-/* -- LVGL callbacks ------------------------------------------------ */
+/* ── LVGL callbacks ─────────────────────────────────────────────── */
 
 static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
                            uint8_t *px_map)
@@ -53,7 +105,7 @@ static void lvgl_tick_cb(void *arg)
     lv_tick_inc(LVGL_TICK_PERIOD_MS);
 }
 
-/* -- LVGL task ----------------------------------------------------- */
+/* ── LVGL task ──────────────────────────────────────────────────── */
 
 static void lvgl_task(void *arg)
 {
@@ -69,7 +121,7 @@ static void lvgl_task(void *arg)
     }
 }
 
-/* -- UI ------------------------------------------------------------ */
+/* ── UI ─────────────────────────────────────────────────────────── */
 
 static void create_ui(void)
 {
@@ -92,7 +144,7 @@ static void create_ui(void)
     lv_obj_align(label, LV_ALIGN_CENTER, 0, 80);
 }
 
-/* -- Main ---------------------------------------------------------- */
+/* ── Main ───────────────────────────────────────────────────────── */
 
 void app_main(void)
 {
@@ -112,14 +164,14 @@ void app_main(void)
     spi_bus_config_t bus_cfg = {
         .sclk_io_num = CONFIG_LCD_SPI_SCLK_GPIO,
         .mosi_io_num = CONFIG_LCD_SPI_MOSI_GPIO,
-        .miso_io_num = CONFIG_LCD_SPI_MISO_GPIO,
+        .miso_io_num = -1,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
         .max_transfer_sz = buf_sz,
     };
     ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO));
 
-    // Panel IO
+    // Panel IO (no on_color_trans_done here — registered via callback API below)
     ESP_LOGI(TAG, "installing panel IO");
     esp_lcd_panel_io_handle_t io_handle = NULL;
     esp_lcd_panel_io_spi_config_t io_cfg = {
@@ -138,16 +190,22 @@ void app_main(void)
     esp_lcd_panel_handle_t panel = NULL;
     esp_lcd_panel_dev_config_t panel_cfg = {
         .reset_gpio_num = CONFIG_LCD_RST_GPIO,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
         .bits_per_pixel = 24,
     };
     ESP_ERROR_CHECK(esp_lcd_new_panel_ili9488(io_handle, &panel_cfg, &panel));
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
+
+    // Landscape orientation (experimental — mirror flags may need adjustment on hardware)
+    // Note: LVGL could also modify MADCTL via the same swap_xy/mirror driver calls,
+    // so avoid using lv_display_set_rotation() to prevent conflicting register writes.
+    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, false, false));
+
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-    // LVGL init
+    // ── LVGL init ──────────────────────────────────────────────
     ESP_LOGI(TAG, "initializing LVGL");
     lv_init();
 
@@ -171,7 +229,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_lcd_panel_io_register_event_callbacks(
         io_handle, &cbs, disp));
 
-    // LVGL tick timer
+    // LVGL tick timer (2ms periodic)
     esp_timer_handle_t tick_timer = NULL;
     const esp_timer_create_args_t tick_args = {
         .callback = lvgl_tick_cb,
@@ -191,3 +249,64 @@ void app_main(void)
     xTaskCreate(lvgl_task, "lvgl", LVGL_TASK_STACK_SIZE, NULL,
                 LVGL_TASK_PRIORITY, NULL);
 }
+```
+
+**Step 2: Build**
+
+Run: `idf.py build`
+Expected: Build succeeds with no warnings
+
+**Step 3: Commit**
+
+```bash
+git add main/ili9488-test.c
+git commit -m "feat: replace color fill demo with LVGL integration"
+```
+
+---
+
+### Task 3: Flash and Test
+
+**Step 1: Flash to NanoESP32-C6**
+
+Run: `idf.py -p /dev/ttyUSB0 flash monitor`
+
+Expected: Display shows a white screen with a blue rounded rectangle in the center and "Hello LVGL" text below it, in landscape orientation.
+
+**Step 2: Troubleshoot orientation if needed**
+
+If the image is mirrored or rotated incorrectly, adjust the mirror flags:
+
+```c
+// Try these combinations:
+esp_lcd_panel_mirror(panel, true, false);   // mirror X
+esp_lcd_panel_mirror(panel, false, true);   // mirror Y
+esp_lcd_panel_mirror(panel, true, true);    // mirror both
+```
+
+Only one combination will look correct — text readable left-to-right, rectangle centered.
+
+**Step 3: Verify acceptance criteria**
+
+- [ ] Build succeeds with no warnings for esp32c6
+- [ ] Display shows "Hello LVGL" label and blue rectangle in landscape
+- [ ] No crashes or memory exhaustion (monitor serial output)
+- [ ] LVGL tick and task run continuously without watchdog triggers
+
+**Step 4: Commit any fixups**
+
+```bash
+git add main/ili9488-test.c
+git commit -m "fix: adjust orientation/mirror flags for landscape"
+```
+
+---
+
+### Task 4: Final Commit
+
+**Step 1: Commit iteration docs if updated**
+
+```bash
+git add -A
+git commit -m "docs: complete iteration 2 - LVGL integration"
+```
