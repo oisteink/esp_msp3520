@@ -133,6 +133,8 @@ static void lvgl_task(void *arg)
     }
 }
 
+static void start_calibration(void);
+
 /* -- Console commands ---------------------------------------------- */
 
 static int cmd_log_level(int argc, char **argv)
@@ -175,28 +177,64 @@ static int cmd_info(int argc, char **argv)
 static int cmd_touch_cal(void *ctx, int argc, char **argv)
 {
     app_context_t *app = (app_context_t *)ctx;
+
     if (argc == 1) {
+        if (app->cal.valid) {
+            printf("Calibration: active\n");
+            printf("  a=%.6f b=%.6f c=%.1f\n", app->cal.a, app->cal.b, app->cal.c);
+            printf("  d=%.6f e=%.6f f=%.1f\n", app->cal.d, app->cal.e, app->cal.f);
+        } else {
+            printf("Calibration: none (using raw coordinates)\n");
+        }
         bool swap, mx, my;
         esp_lcd_touch_get_swap_xy(app->touch, &swap);
         esp_lcd_touch_get_mirror_x(app->touch, &mx);
         esp_lcd_touch_get_mirror_y(app->touch, &my);
-        printf("swap_xy=%d  mirror_x=%d  mirror_y=%d\n", swap, mx, my);
+        printf("Flags: swap_xy=%d mirror_x=%d mirror_y=%d\n", swap, mx, my);
         return 0;
     }
-    if (argc != 3) {
-        printf("Usage: touch_cal [swap_xy|mirror_x|mirror_y] [0|1]\n");
-        return 1;
+
+    const char *sub = argv[1];
+
+    if (strcmp(sub, "start") == 0) {
+        printf("Starting calibration...\n");
+        start_calibration();
+        return 0;
     }
-    bool val = atoi(argv[2]) != 0;
-    if      (strcmp(argv[1], "swap_xy") == 0)  esp_lcd_touch_set_swap_xy(app->touch, val);
-    else if (strcmp(argv[1], "mirror_x") == 0) esp_lcd_touch_set_mirror_x(app->touch, val);
-    else if (strcmp(argv[1], "mirror_y") == 0) esp_lcd_touch_set_mirror_y(app->touch, val);
-    else {
-        printf("Unknown flag: %s\n", argv[1]);
-        return 1;
+
+    if (strcmp(sub, "show") == 0) {
+        if (app->cal.valid) {
+            printf("a=%.6f b=%.6f c=%.1f\n", app->cal.a, app->cal.b, app->cal.c);
+            printf("d=%.6f e=%.6f f=%.1f\n", app->cal.d, app->cal.e, app->cal.f);
+        } else {
+            printf("No calibration data\n");
+        }
+        return 0;
     }
-    printf("Set %s=%d\n", argv[1], val);
-    return 0;
+
+    if (strcmp(sub, "clear") == 0) {
+        app->cal.valid = false;
+        touch_cal_clear();
+        printf("Calibration cleared\n");
+        return 0;
+    }
+
+    // Legacy: swap_xy/mirror_x/mirror_y flags
+    if (argc == 3) {
+        bool val = atoi(argv[2]) != 0;
+        if      (strcmp(sub, "swap_xy") == 0)  esp_lcd_touch_set_swap_xy(app->touch, val);
+        else if (strcmp(sub, "mirror_x") == 0) esp_lcd_touch_set_mirror_x(app->touch, val);
+        else if (strcmp(sub, "mirror_y") == 0) esp_lcd_touch_set_mirror_y(app->touch, val);
+        else {
+            printf("Unknown: %s\n", sub);
+            return 1;
+        }
+        printf("Set %s=%d\n", sub, val);
+        return 0;
+    }
+
+    printf("Usage: touch_cal [start|show|clear|swap_xy|mirror_x|mirror_y] [0|1]\n");
+    return 1;
 }
 
 static int cmd_rotation(void *ctx, int argc, char **argv)
@@ -260,6 +298,136 @@ static int cmd_touch_cfg(int argc, char **argv)
         return 1;
     }
     return 0;
+}
+
+/* -- Calibration screen -------------------------------------------- */
+
+// Calibration crosshair target positions (screen coordinates)
+static const uint16_t cal_screen_x[3] = { 40, 280, 160 };  // top-left, top-right, bottom-center
+static const uint16_t cal_screen_y[3] = { 40, 40, 440 };
+
+static lv_obj_t *cal_label = NULL;
+static lv_obj_t *cal_crosshair = NULL;
+static uint8_t cal_point_idx = 0;
+static uint16_t cal_raw_x[3];
+static uint16_t cal_raw_y[3];
+static bool cal_active = false;
+static bool cal_wait_release = false;
+static lv_obj_t *cal_screen = NULL;
+static lv_obj_t *main_screen = NULL;
+
+static void draw_crosshair(lv_obj_t *parent, uint16_t x, uint16_t y)
+{
+    if (cal_crosshair) {
+        lv_obj_del(cal_crosshair);
+    }
+    cal_crosshair = lv_label_create(parent);
+    lv_label_set_text(cal_crosshair, "+");
+    lv_obj_set_style_text_font(cal_crosshair, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(cal_crosshair, lv_color_make(0xFF, 0x00, 0x00), 0);
+    lv_obj_set_pos(cal_crosshair, x - 8, y - 14);
+}
+
+static void cal_return_timer_cb(lv_timer_t *timer)
+{
+    if (main_screen) {
+        lv_screen_load(main_screen);
+    }
+    lv_timer_del(timer);
+}
+
+static void cal_release_cb(lv_event_t *e)
+{
+    cal_wait_release = false;
+}
+
+static void cal_touch_cb(lv_event_t *e)
+{
+    if (!cal_active || cal_wait_release) return;
+
+    lv_indev_t *indev = lv_indev_active();
+    if (!indev) return;
+
+    // We need raw coordinates — read directly from the driver
+    // touch_read_cb already called esp_lcd_touch_read_data, and since
+    // cal.valid is false during calibration, the coordinates in the
+    // indev are raw ADC values
+    lv_point_t p;
+    lv_indev_get_point(indev, &p);
+
+    cal_raw_x[cal_point_idx] = (uint16_t)p.x;
+    cal_raw_y[cal_point_idx] = (uint16_t)p.y;
+
+    ESP_LOGI(TAG, "Cal point %d: raw=(%u, %u) screen=(%u, %u)",
+             cal_point_idx, (uint16_t)p.x, (uint16_t)p.y,
+             cal_screen_x[cal_point_idx], cal_screen_y[cal_point_idx]);
+
+    cal_point_idx++;
+    cal_wait_release = true;
+
+    if (cal_point_idx >= 3) {
+        cal_active = false;
+
+        touch_cal_t cal;
+        esp_err_t err = touch_cal_compute(cal_raw_x, cal_raw_y,
+                                          cal_screen_x, cal_screen_y, &cal);
+        if (err == ESP_OK) {
+            app_ctx.cal = cal;
+            touch_cal_save(&cal);
+            lv_label_set_text(cal_label, "Calibration OK!\nSaved to NVS.");
+        } else {
+            lv_label_set_text(cal_label, "Calibration FAILED.\nTry again.");
+        }
+
+        if (cal_crosshair) {
+            lv_obj_del(cal_crosshair);
+            cal_crosshair = NULL;
+        }
+
+        // Return to main screen after 2 seconds
+        lv_timer_create(cal_return_timer_cb, 2000, NULL);
+    } else {
+        lv_obj_t *scr = lv_obj_get_parent(cal_label);
+        draw_crosshair(scr, cal_screen_x[cal_point_idx], cal_screen_y[cal_point_idx]);
+        lv_label_set_text_fmt(cal_label, "Tap crosshair %d/3", cal_point_idx + 1);
+    }
+}
+
+static void start_calibration(void)
+{
+    _lock_acquire(&lvgl_lock);
+
+    // Temporarily disable calibration so we get raw coordinates
+    app_ctx.cal.valid = false;
+
+    // Remember the main screen so we can return to it
+    main_screen = lv_screen_active();
+
+    if (!cal_screen) {
+        cal_screen = lv_obj_create(NULL);
+        lv_obj_set_style_bg_color(cal_screen, lv_color_white(), 0);
+        lv_obj_set_size(cal_screen, LCD_H_RES, LCD_V_RES);
+
+        cal_label = lv_label_create(cal_screen);
+        lv_obj_set_style_text_font(cal_label, &lv_font_montserrat_28, 0);
+        lv_obj_set_style_text_color(cal_label, lv_color_black(), 0);
+        lv_obj_set_style_text_align(cal_label, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(cal_label, LV_ALIGN_CENTER, 0, 0);
+
+        lv_obj_add_event_cb(cal_screen, cal_touch_cb, LV_EVENT_PRESSED, NULL);
+        lv_obj_add_event_cb(cal_screen, cal_release_cb, LV_EVENT_RELEASED, NULL);
+    }
+
+    cal_point_idx = 0;
+    cal_active = true;
+    cal_wait_release = false;
+    lv_label_set_text(cal_label, "Tap crosshair 1/3");
+
+    draw_crosshair(cal_screen, cal_screen_x[0], cal_screen_y[0]);
+
+    lv_screen_load(cal_screen);
+
+    _lock_release(&lvgl_lock);
 }
 
 /* -- UI ------------------------------------------------------------ */
@@ -499,8 +667,8 @@ void app_main(void)
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "info", .help = "Show system info", .func = cmd_info });
     esp_console_cmd_register(&(esp_console_cmd_t){
-        .command = "touch_cal", .help = "Get/set touch coordinate flags",
-        .hint = "[swap_xy|mirror_x|mirror_y] [0|1]",
+        .command = "touch_cal", .help = "Touch calibration and coordinate flags",
+        .hint = "[start|show|clear|swap_xy|mirror_x|mirror_y] [0|1]",
         .func_w_context = cmd_touch_cal, .context = &app_ctx });
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "rotation", .help = "Get/set display rotation flags",
