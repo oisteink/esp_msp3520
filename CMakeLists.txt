@@ -1,6 +1,8 @@
-# The following five lines of boilerplate have to be in your project's
-# CMakeLists in this exact order for cmake to work correctly
+# MSP3520 Component Repository
+#
+# This is not a buildable project. To build, use one of the examples:
+#   cd examples/basic
+#   idf.py build
+#
+# The reusable component lives in components/msp3520/
 cmake_minimum_required(VERSION 3.16)
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(ili9488-test)

@@ -21,13 +21,13 @@
 
 static const char *TAG = "xpt2046";
 
-#ifdef CONFIG_XPT2046_INTERRUPT_MODE
+#ifdef CONFIG_MSP3520_XPT2046_INTERRUPT_MODE
     #define XPT2046_PD0_BIT       (0x00)
 #else
     #define XPT2046_PD0_BIT       (0x01)
 #endif
 
-#ifdef CONFIG_XPT2046_VREF_ON_MODE
+#ifdef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     #define XPT2046_PD1_BIT   (0x02)
 #else
     #define XPT2046_PD1_BIT   (0x00)
@@ -49,13 +49,8 @@ enum xpt2046_registers
     TEMP1       = 0xF6 | XPT2046_PD_BITS, // 1      111   0       1     1       X
 };
 
-#if CONFIG_XPT2046_ENABLE_LOCKING
 #define XPT2046_LOCK(lock) portENTER_CRITICAL(lock)
 #define XPT2046_UNLOCK(lock) portEXIT_CRITICAL(lock)
-#else
-#define XPT2046_LOCK(lock)
-#define XPT2046_UNLOCK(lock)
-#endif
 
 static const uint16_t XPT2046_ADC_LIMIT = 4096;
 // refer the TSC2046 datasheet https://www.ti.com/lit/ds/symlink/tsc2046.pdf rev F 2008
@@ -63,7 +58,7 @@ static const uint16_t XPT2046_ADC_LIMIT = 4096;
 // Vref is approx 2.507V = 2507mV at moderate temperatures (refer p8 Vref vs Temperature chart)
 // counts@25C = TEMP0_mV / Vref_mv * XPT2046_ADC_LIMIT
 static const float XPT2046_TEMP0_COUNTS_AT_25C = (599.5 / 2507 * XPT2046_ADC_LIMIT);
-static uint16_t xpt2046_z_threshold = CONFIG_XPT2046_Z_THRESHOLD;
+static uint16_t xpt2046_z_threshold = CONFIG_MSP3520_TOUCH_Z_THRESHOLD;
 static atomic_bool xpt2046_touch_pending = false;
 static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp);
 static bool xpt2046_get_xy(esp_lcd_touch_handle_t tp,
@@ -127,7 +122,7 @@ esp_err_t esp_lcd_touch_new_spi_xpt2046(const esp_lcd_panel_io_handle_t io,
             esp_lcd_touch_register_interrupt_callback(handle, config->interrupt_callback);
         }
 
-#if CONFIG_XPT2046_INTERRUPT_MODE
+#if CONFIG_MSP3520_XPT2046_INTERRUPT_MODE
         // Read a register to enable Low Power mode, which is required for interrupt to work.
         uint8_t battery = 0;
         ESP_GOTO_ON_ERROR(esp_lcd_panel_io_rx_param(handle->io, BATTERY, &battery, 1), err, TAG, "XPT2046 read error!");
@@ -178,7 +173,7 @@ static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp)
     uint32_t x = 0, y = 0;
     uint8_t point_count = 0;
 
-#ifdef CONFIG_XPT2046_INTERRUPT_MODE
+#ifdef CONFIG_MSP3520_XPT2046_INTERRUPT_MODE
     if (!atomic_exchange(&xpt2046_touch_pending, false))
     {
         XPT2046_LOCK(&tp->data.lock);
@@ -257,13 +252,8 @@ static esp_err_t xpt2046_read_data(esp_lcd_touch_handle_t tp)
                 y_sum += y_samples[i];
             }
 
-#if CONFIG_XPT2046_CONVERT_ADC_TO_COORDS
-            x = (uint32_t)(((double)x_sum / mid_count / (double)XPT2046_ADC_LIMIT) * tp->config.x_max);
-            y = (uint32_t)(((double)y_sum / mid_count / (double)XPT2046_ADC_LIMIT) * tp->config.y_max);
-#else
             x = x_sum / mid_count;
             y = y_sum / mid_count;
-#endif
             point_count = 1;
         }
         else
@@ -340,7 +330,7 @@ uint16_t esp_lcd_touch_xpt2046_get_z_threshold(void)
 esp_err_t esp_lcd_touch_xpt2046_read_battery_level(const esp_lcd_touch_handle_t handle, float *output)
 {
     uint16_t level;
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // First read is to turn on the Vref, so it has extra time to stabilise before we read it for real
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, BATTERY, &level), TAG, "XPT2046 read error!");
 #endif
@@ -359,7 +349,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_battery_level(const esp_lcd_touch_handle_t 
     // adjust for ADC bit count
     *output /= 4096.0f;
 
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // Final read is to turn the Vref off
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, Z_VALUE_1, &level), TAG, "XPT2046 read error!");
 #endif
@@ -370,7 +360,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_battery_level(const esp_lcd_touch_handle_t 
 esp_err_t esp_lcd_touch_xpt2046_read_aux_level(const esp_lcd_touch_handle_t handle, float *output)
 {
     uint16_t level;
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // First read is to turn on the Vref, so it has extra time to stabilise before we read it for real
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, AUX_IN, &level), TAG, "XPT2046 read error!");
 #endif
@@ -386,7 +376,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_aux_level(const esp_lcd_touch_handle_t hand
     // adjust for ADC bit count
     *output /= 4096.0f;
 
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // Final read is to turn on the ADC and the Vref off
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, Z_VALUE_1, &level), TAG, "XPT2046 read error!");
 #endif
@@ -397,7 +387,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_aux_level(const esp_lcd_touch_handle_t hand
 esp_err_t esp_lcd_touch_xpt2046_read_temp0_level(const esp_lcd_touch_handle_t handle, float *output)
 {
     uint16_t temp0;
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // First read is to turn on the Vref, so it has extra time to stabilise before we read it for real
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, TEMP0, &temp0), TAG, "XPT2046 read error!");
 #endif
@@ -409,7 +399,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_temp0_level(const esp_lcd_touch_handle_t ha
     // Convert to temperature in degrees C
     *output = (XPT2046_TEMP0_COUNTS_AT_25C - *output) * (2.507 / 4096.0) / 0.0021 + 25.0;
 
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // Final read is to turn on the ADC and the Vref off
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, Z_VALUE_1, &temp0), TAG, "XPT2046 read error!");
 #endif
@@ -421,7 +411,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_temp1_level(const esp_lcd_touch_handle_t ha
 {
     uint16_t temp0;
     uint16_t temp1;
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // First read is to turn on the Vref, so it has extra time to stabilise before we read it for real
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, TEMP0, &temp0), TAG, "XPT2046 read error!");
 #endif
@@ -435,7 +425,7 @@ esp_err_t esp_lcd_touch_xpt2046_read_temp1_level(const esp_lcd_touch_handle_t ha
     *output = temp1 - temp0;
     *output = *output * 1000.0 * (2.507 / 4096.0) * 2.573 - 273.0;
 
-#ifndef CONFIG_XPT2046_VREF_ON_MODE
+#ifndef CONFIG_MSP3520_XPT2046_VREF_ON_MODE
     // Final read is to turn on the ADC and the Vref off
     ESP_RETURN_ON_ERROR(xpt2046_read_register(handle, Z_VALUE_1, &temp0), TAG, "XPT2046 read error!");
 #endif

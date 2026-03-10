@@ -78,9 +78,9 @@ msp3520_lvgl_unlock(handle);
 
 ### R7: Backlight control
 
-Component owns the backlight GPIO. Configurable pin and active level via Kconfig. Turned on during init. Exposed for runtime control:
+Component owns the backlight GPIO via LEDC PWM. Configurable pin and active level via Kconfig. Full brightness on init. Exposed for runtime control:
 ```c
-msp3520_set_backlight(handle, true/false);
+msp3520_set_backlight(handle, uint8_t brightness);  // 0-100
 ```
 
 ### R8: Display is 320x480, RGB888, portrait
@@ -137,7 +137,7 @@ bool msp3520_lvgl_lock(msp3520_handle_t handle, uint32_t timeout_ms);
 void msp3520_lvgl_unlock(msp3520_handle_t handle);
 
 // --- Hardware control ---
-esp_err_t msp3520_set_backlight(msp3520_handle_t handle, bool on);
+esp_err_t msp3520_set_backlight(msp3520_handle_t handle, uint8_t brightness);  // 0-100
 
 // --- Touch calibration ---
 esp_err_t msp3520_start_calibration(msp3520_handle_t handle);
