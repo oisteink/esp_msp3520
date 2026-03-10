@@ -116,6 +116,14 @@ menu "MSP3520 Display Module"
             help
                 Touch pressure less than this value will be discarded.
                 Stylus: 300-500. Finger: 50-150.
+
+        config MSP3520_TOUCH_SPI_CLOCK_KHZ
+            int "Touch SPI clock (kHz)"
+            range 100 2500
+            default 1000
+            help
+                SPI clock for the XPT2046 touch controller.
+                Datasheet max is 2.5 MHz. Default 1 MHz.
     endmenu
 
     menu "LVGL"

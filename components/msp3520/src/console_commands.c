@@ -5,6 +5,7 @@
 #include "esp_console.h"
 #include "esp_log.h"
 
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -169,6 +170,28 @@ static int cmd_touch(void *ctx, int argc, char **argv)
         return 0;
     }
 
+    if (strcmp(sub, "rate") == 0) {
+        if (argc != 3) {
+            printf("Usage: touch rate <ms>\n");
+            return 1;
+        }
+        uint32_t ms = (uint32_t)atoi(argv[2]);
+        if (ms < 1 || ms > 100) {
+            printf("Range: 1-100 ms\n");
+            return 1;
+        }
+        msp3520_lvgl_lock(h, 0);
+        lv_timer_t *tmr = lv_indev_get_read_timer(h->indev);
+        if (tmr) {
+            lv_timer_set_period(tmr, ms);
+            printf("Touch read period set to %"PRIu32"ms\n", ms);
+        } else {
+            printf("Error: no indev timer\n");
+        }
+        msp3520_lvgl_unlock(h);
+        return 0;
+    }
+
     if (strcmp(sub, "cal") == 0) {
         if (argc == 2) {
             if (h->cal.valid) {
@@ -213,7 +236,7 @@ static int cmd_touch(void *ctx, int argc, char **argv)
         return 0;
     }
 
-    printf("Usage: touch [z <val>|cal [start|show|clear]|swap_xy|mirror_x|mirror_y <0|1>]\n");
+    printf("Usage: touch [z <val>|rate <ms>|cal [start|show|clear]|swap_xy|mirror_x|mirror_y <0|1>]\n");
     return 1;
 }
 
@@ -293,7 +316,7 @@ esp_err_t msp3520_register_console_commands(msp3520_handle_t handle)
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "touch",
         .help = "Touch config, calibration, and flags",
-        .hint = "[z <val>|cal [start|show|clear]|swap_xy|mirror_x|mirror_y <0|1>]",
+        .hint = "[z <val>|rate <ms>|cal [start|show|clear]|swap_xy|mirror_x|mirror_y <0|1>]",
         .func_w_context = cmd_touch,
         .context = handle,
     });

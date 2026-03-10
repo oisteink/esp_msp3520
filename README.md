@@ -38,4 +38,6 @@ idf.py -p /dev/ttyUSB0 flash monitor
 Minimal example: button with tap counter and coordinate display. Demonstrates component init, UI creation, and REPL.
 
 ### finger-paint
-Full-screen canvas drawing app. Draw with your finger or stylus, pick colors, clear the canvas. Includes a border grid to visualize touch edge-reach dead zones. LVGL performance monitor available via `display perf on`.
+Full-screen canvas drawing app. Draw with your finger or stylus, pick colors, clear the canvas. Includes a border grid to visualize touch edge-reach dead zones. Uses direct buffer drawing with partial invalidation for 100 FPS while drawing. LVGL performance monitor available via `display perf on`.
+
+Both examples include input latency tuning (1kHz FreeRTOS tick, 10ms LVGL refresh, 2MHz touch SPI) — see `docs/project-overview.md` for details.

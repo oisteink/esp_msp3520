@@ -77,7 +77,19 @@ Key non-default settings persisted in each example's `sdkconfig.defaults`:
 - `CONFIG_LOG_MAXIMUM_LEVEL=4` (DEBUG compiled in)
 - Idle task watchdog disabled on both cores (LVGL blocks core 1)
 - LVGL: 24-bit color depth, Montserrat 28 font
-- finger-paint also enables: `LV_USE_SYSMON`, `LV_USE_PERF_MONITOR`
+
+### Input latency tuning (both examples)
+
+These settings reduce worst-case touch-to-pixel latency from ~40ms to ~12ms with negligible idle overhead:
+
+- `CONFIG_FREERTOS_HZ=1000` — 1ms LVGL task sleep minimum (default 100 = 10ms)
+- `CONFIG_LV_DEF_REFR_PERIOD=10` — 10ms indev read / display refresh (default 33ms)
+- `CONFIG_MSP3520_TOUCH_SPI_CLOCK_KHZ=2000` — 2 MHz touch SPI (default 1 MHz, max 2.5 MHz)
+
+### finger-paint extras
+
+- `LV_USE_SYSMON`, `LV_USE_PERF_MONITOR` — LVGL performance overlay (toggled via `display perf on`)
+- Uses direct buffer drawing with partial invalidation instead of the LVGL canvas layer API, which invalidates the entire canvas on every `lv_canvas_finish_layer()` call. This keeps FPS at 100 even while drawing.
 
 ## Console Commands
 
@@ -87,6 +99,7 @@ The msp3520 component provides optional REPL commands (registered via `msp3520_r
 |---------|-------------|
 | `touch` | Show touch status (z_threshold, calibration, flags) |
 | `touch z <val>` | Set Z-pressure threshold (saved to NVS) |
+| `touch rate <ms>` | Set touch read period in ms (1-100, runtime only) |
 | `touch cal start` | Start 3-point crosshair calibration screen |
 | `touch cal show` | Show calibration coefficients |
 | `touch cal clear` | Clear calibration from NVS |

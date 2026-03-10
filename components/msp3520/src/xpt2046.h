@@ -3,7 +3,7 @@
 #include "esp_lcd_touch.h"
 #include "esp_lcd_panel_io.h"
 
-#define XPT2046_SPI_CLOCK_HZ (1 * 1000 * 1000)
+#define XPT2046_SPI_CLOCK_HZ (CONFIG_MSP3520_TOUCH_SPI_CLOCK_KHZ * 1000)
 
 #define XPT2046_SPI_IO_CONFIG(touch_cs)             \
     {                                               \

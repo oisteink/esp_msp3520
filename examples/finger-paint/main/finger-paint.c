@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 
+#include <stdlib.h>
+
 static const char *TAG = "finger-paint";
 
 /* -- Config -------------------------------------------------------- */
@@ -17,11 +19,75 @@ static const char *TAG = "finger-paint";
 /* -- State --------------------------------------------------------- */
 
 static lv_obj_t *canvas;
+static uint8_t *canvas_buf;
 static lv_color_t current_color;
 static bool has_prev;
 static int32_t prev_x, prev_y;
 
-/* -- Drawing helpers ----------------------------------------------- */
+/* -- Direct buffer drawing ----------------------------------------- */
+
+static inline void buf_set_px(int32_t x, int32_t y, lv_color_t c)
+{
+    if (x < 0 || x >= CANVAS_W || y < 0 || y >= CANVAS_H) return;
+    uint8_t *p = canvas_buf + (y * CANVAS_W + x) * 3;
+    p[0] = c.blue;
+    p[1] = c.green;
+    p[2] = c.red;
+}
+
+/* Draw a filled circle of radius r at (cx, cy) directly into the buffer */
+static void buf_fill_circle(int32_t cx, int32_t cy, int32_t r, lv_color_t c)
+{
+    for (int32_t dy = -r; dy <= r; dy++) {
+        for (int32_t dx = -r; dx <= r; dx++) {
+            if (dx * dx + dy * dy <= r * r) {
+                buf_set_px(cx + dx, cy + dy, c);
+            }
+        }
+    }
+}
+
+/* Bresenham line with round brush (filled circle at each point) */
+static void buf_draw_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                          int32_t w, lv_color_t c)
+{
+    int32_t r = w / 2;
+    int32_t dx = abs(x1 - x0);
+    int32_t dy = -abs(y1 - y0);
+    int32_t sx = x0 < x1 ? 1 : -1;
+    int32_t sy = y0 < y1 ? 1 : -1;
+    int32_t err = dx + dy;
+
+    while (1) {
+        buf_fill_circle(x0, y0, r, c);
+        if (x0 == x1 && y0 == y1) break;
+        int32_t e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+/* Invalidate only the bounding box of a line segment (canvas-local coords) */
+static void invalidate_line_area(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t w)
+{
+    int32_t r = w / 2 + 1;
+    int32_t min_x = (x0 < x1 ? x0 : x1) - r;
+    int32_t min_y = (y0 < y1 ? y0 : y1) - r;
+    int32_t max_x = (x0 > x1 ? x0 : x1) + r;
+    int32_t max_y = (y0 > y1 ? y0 : y1) + r;
+
+    /* Clamp to canvas bounds */
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x >= CANVAS_W) max_x = CANVAS_W - 1;
+    if (max_y >= CANVAS_H) max_y = CANVAS_H - 1;
+
+    /* Area is in canvas-local coords; canvas is at (0, TOOLBAR_H) on screen */
+    lv_area_t area = {min_x, min_y + TOOLBAR_H, max_x, max_y + TOOLBAR_H};
+    lv_obj_invalidate_area(canvas, &area);
+}
+
+/* -- Drawing helpers (use layer API only for init/clear) ------------ */
 
 static void draw_border_and_grid(void)
 {
@@ -82,20 +148,12 @@ static void canvas_press_cb(lv_event_t *e)
     if (cx < 0 || cx >= CANVAS_W || cy < 0 || cy >= CANVAS_H) return;
 
     if (has_prev) {
-        lv_layer_t layer;
-        lv_canvas_init_layer(canvas, &layer);
-
-        lv_draw_line_dsc_t dsc;
-        lv_draw_line_dsc_init(&dsc);
-        dsc.color = current_color;
-        dsc.width = BRUSH_W;
-        dsc.round_start = 1;
-        dsc.round_end = 1;
-        dsc.p1 = (lv_point_precise_t){prev_x, prev_y};
-        dsc.p2 = (lv_point_precise_t){cx, cy};
-        lv_draw_line(&layer, &dsc);
-
-        lv_canvas_finish_layer(canvas, &layer);
+        buf_draw_line(prev_x, prev_y, cx, cy, BRUSH_W, current_color);
+        invalidate_line_area(prev_x, prev_y, cx, cy, BRUSH_W);
+    } else {
+        /* First point of a new stroke: draw a dot */
+        buf_fill_circle(cx, cy, BRUSH_W / 2, current_color);
+        invalidate_line_area(cx, cy, cx, cy, BRUSH_W);
     }
 
     prev_x = cx;
@@ -175,9 +233,9 @@ static void create_ui(void)
     canvas = lv_canvas_create(scr);
     lv_obj_align(canvas, LV_ALIGN_TOP_LEFT, 0, TOOLBAR_H);
 
-    void *buf = heap_caps_malloc(CANVAS_W * CANVAS_H * 3, MALLOC_CAP_SPIRAM);
-    assert(buf);
-    lv_canvas_set_buffer(canvas, buf, CANVAS_W, CANVAS_H, LV_COLOR_FORMAT_RGB888);
+    canvas_buf = heap_caps_malloc(CANVAS_W * CANVAS_H * 3, MALLOC_CAP_SPIRAM);
+    assert(canvas_buf);
+    lv_canvas_set_buffer(canvas, canvas_buf, CANVAS_W, CANVAS_H, LV_COLOR_FORMAT_RGB888);
 
     clear_canvas();
 
