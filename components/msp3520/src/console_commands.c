@@ -225,10 +225,32 @@ static int cmd_display(void *ctx, int argc, char **argv)
         printf("Display: %dx%d\n", MSP3520_H_RES, MSP3520_V_RES);
         printf("Use: display backlight <0-100>\n");
         printf("     display rotation [swap_xy|mirror_x|mirror_y] [0|1]\n");
+#if LV_USE_PERF_MONITOR
+        printf("     display perf <on|off>\n");
+#endif
         return 0;
     }
 
     const char *sub = argv[1];
+
+#if LV_USE_PERF_MONITOR
+    if (strcmp(sub, "perf") == 0) {
+        if (argc != 3) {
+            printf("Usage: display perf <on|off>\n");
+            return 1;
+        }
+        msp3520_lvgl_lock(h, 0);
+        if (strcmp(argv[2], "on") == 0) {
+            lv_sysmon_show_performance(h->display);
+            printf("Perf monitor: on\n");
+        } else {
+            lv_sysmon_hide_performance(h->display);
+            printf("Perf monitor: off\n");
+        }
+        msp3520_lvgl_unlock(h);
+        return 0;
+    }
+#endif
 
     if (strcmp(sub, "backlight") == 0) {
         if (argc != 3) {
@@ -278,8 +300,8 @@ esp_err_t msp3520_register_console_commands(msp3520_handle_t handle)
 
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "display",
-        .help = "Display control (backlight, rotation)",
-        .hint = "[backlight <0-100>|rotation <flag> <0|1>]",
+        .help = "Display control (backlight, rotation, perf)",
+        .hint = "[backlight <0-100>|rotation <flag> <0|1>|perf <on|off>]",
         .func_w_context = cmd_display,
         .context = handle,
     });
