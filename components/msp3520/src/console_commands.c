@@ -4,7 +4,6 @@
 
 #include "esp_console.h"
 #include "esp_log.h"
-#include "esp_lvgl_port.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -56,17 +55,13 @@ static void cal_touch_cb(lv_event_t *e)
 {
     if (!cal_active || cal_wait_release) return;
 
-    lv_indev_t *indev = lv_indev_active();
-    if (!indev) return;
-
-    lv_point_t p;
-    lv_indev_get_point(indev, &p);
-
-    cal_raw_x[cal_point_idx] = (uint16_t)p.x;
-    cal_raw_y[cal_point_idx] = (uint16_t)p.y;
+    /* Use stored raw ADC values from process_coordinates_cb, not the
+       mapped screen coordinates that LVGL sees */
+    cal_raw_x[cal_point_idx] = cal_handle->last_raw_x;
+    cal_raw_y[cal_point_idx] = cal_handle->last_raw_y;
 
     ESP_LOGI(TAG, "Cal point %d: raw=(%u, %u) screen=(%u, %u)",
-             cal_point_idx, (uint16_t)p.x, (uint16_t)p.y,
+             cal_point_idx, cal_handle->last_raw_x, cal_handle->last_raw_y,
              cal_screen_x[cal_point_idx], cal_screen_y[cal_point_idx]);
 
     cal_point_idx++;
@@ -104,7 +99,7 @@ esp_err_t msp3520_start_calibration(msp3520_handle_t handle)
     if (!handle) return ESP_ERR_INVALID_ARG;
     cal_handle = handle;
 
-    lvgl_port_lock(0);
+    msp3520_lvgl_lock(handle, 0);
 
     handle->cal.valid = false;
 
@@ -133,7 +128,7 @@ esp_err_t msp3520_start_calibration(msp3520_handle_t handle)
     draw_crosshair(cal_screen, cal_screen_x[0], cal_screen_y[0]);
     lv_screen_load(cal_screen);
 
-    lvgl_port_unlock();
+    msp3520_lvgl_unlock(handle);
     return ESP_OK;
 }
 

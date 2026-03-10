@@ -58,7 +58,7 @@ idf_component_register(
     PRIV_INCLUDE_DIRS "src"
     REQUIRES esp_lcd lvgl
     PRIV_REQUIRES esp_driver_spi esp_driver_gpio esp_driver_ledc
-                  esp_timer nvs_flash esp_console
+                  esp_timer nvs_flash console
 )
 ```
 
@@ -69,7 +69,6 @@ description: "MSP3520 display module driver (ILI9488 + XPT2046 + LVGL)"
 dependencies:
   idf: ">=5.0.0"
   espressif/esp_lcd_touch: ">=1.0.4"
-  espressif/esp_lvgl_port: ">=2.0.0"
   lvgl/lvgl: "^9.5.0"
 ```
 
@@ -132,10 +131,14 @@ struct msp3520_t {
 9. **Touch IRQ** — if `config->touch_irq >= 0`, configure GPIO ISR
 10. **Load calibration** — `touch_cal_load(&handle->cal)`
 11. **Load z_threshold** — `touch_z_threshold_load()` → `esp_lcd_touch_xpt2046_set_z_threshold()`
-12. **LVGL via esp_lvgl_port:**
-    - `lvgl_port_init()` with task core, priority, stack size from config
-    - `lvgl_port_add_disp()` with panel handle, buffer config (internal RAM, double-buffered, `draw_buf_lines` height), RGB888
-    - `lvgl_port_add_touch()` with touch handle
+12. **LVGL init (manual — `esp_lvgl_port` rejected due to RGB888/DMA incompatibility):**
+    - Create recursive mutex for thread-safe LVGL access
+    - `lv_init()`, create display with `lv_display_create()`, set RGB888 color format
+    - Allocate double buffers from DMA-capable internal RAM (`MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL`)
+    - Register flush callback (`esp_lcd_panel_draw_bitmap`) and flush_ready callback via panel IO events
+    - Create touch indev with `lv_indev_create()`, set read callback that calls `esp_lcd_touch_read_data`/`get_coordinates`
+    - Start tick timer via `esp_timer` (2ms period)
+    - Start LVGL task via `xTaskCreatePinnedToCore` with config core/priority/stack
 13. Store display/indev handles in struct
 14. Return handle
 
@@ -154,24 +157,23 @@ if (config->touch_spi_host != config->display_spi_host) {
 
 When same host: bus is initialized once with display pins (SCLK/MOSI/MISO). Touch SCLK/MOSI/MISO config values are ignored — they must match the display pins (or be wired to the same lines). This is the "shared bus" scenario on MSP3520 where display and touch share MOSI/MISO/CLK.
 
-**`msp3520_destroy()`:** Reverse order — delete LVGL port, delete touch, delete panel, free SPI buses, free struct.
+**`msp3520_destroy()`:** Reverse order — delete LVGL task, stop tick timer, delete display/indev, delete touch, delete panel, free SPI buses, delete mutex, free struct.
 
-**Calibration `process_coordinates` callback:**
+**`process_coordinates` callback:**
 
 ```c
-static void calibration_process_coords(esp_lcd_touch_handle_t tp,
-                                       uint16_t *x, uint16_t *y,
-                                       uint16_t *strength, uint8_t *count,
-                                       uint8_t max_count) {
-    msp3520_handle_t handle = /* retrieved via tp->config.user_data or static */;
-    if (handle->cal.valid && *count > 0) {
-        for (int i = 0; i < *count; i++) {
-            touch_cal_apply(&handle->cal, x[i], y[i], &x[i], &y[i],
-                           MSP3520_H_RES, MSP3520_V_RES);
-        }
-    }
+static void process_coordinates_cb(...) {
+    // Store raw ADC values before mapping (for calibration to use)
+    s_handle->last_raw_x = x[0];
+    s_handle->last_raw_y = y[0];
+
+    for each point:
+        if (cal.valid)  → apply affine calibration transform
+        else            → rough linear map: ADC/4096 * screen_res (fallback for calibration UI)
 }
 ```
+
+The fallback linear map ensures touch is usable even before calibration. The calibration UI reads stored raw ADC values (`last_raw_x/y`) to compute the affine transform from raw → screen, not the already-mapped values that LVGL sees.
 
 ## Step 5: Write msp3520.h
 
@@ -224,7 +226,7 @@ Extract from current `console.c`:
 
 **Adaptation needed:**
 - Current commands use `app_context_t` for panel/touch/cal/flags. In the component, they use `msp3520_handle_t` instead.
-- Calibration screen callbacks currently access statics and `cal_lvgl_lock`. In the component, they use `lvgl_port_lock()`/`unlock()` via the handle.
+- Calibration screen callbacks currently access statics and `cal_lvgl_lock`. In the component, they use `msp3520_lvgl_lock()`/`unlock()` via the handle. Calibration reads raw ADC from `handle->last_raw_x/y` instead of LVGL's already-mapped coordinates.
 - The `display` command for backlight adds `backlight <0-100>` subcommand calling `msp3520_set_backlight()`.
 
 ## Step 7: Write Kconfig
@@ -345,7 +347,7 @@ menu "MSP3520 Display Module"
 endmenu
 ```
 
-Note: `XPT2046_CONVERT_ADC_TO_COORDS` and `XPT2046_ENABLE_LOCKING` are dropped — the component always uses calibration for coord conversion and doesn't need the locking option (LVGL port handles thread safety).
+Note: `XPT2046_CONVERT_ADC_TO_COORDS` and `XPT2046_ENABLE_LOCKING` are dropped — the component always uses calibration for coord conversion and always enables the spinlock.
 
 ## Step 8: Create Example
 
@@ -466,10 +468,10 @@ CONFIG_LV_FONT_MONTSERRAT_28=y
 
 ## Risk Areas
 
-1. **`esp_lvgl_port` buffer allocation** — need to confirm it supports internal-RAM-only double buffers at our size. The API has `flags.buff_dma` and `flags.buff_spiram` — we'd set both false for internal RAM, or `buff_dma = true` for DMA-capable internal RAM.
+1. **~~`esp_lvgl_port` buffer allocation~~** — RESOLVED: `esp_lvgl_port` rejects DMA buffers for non-RGB565 formats. Switched to manual LVGL integration with `heap_caps_malloc(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)`.
 
-2. **`process_coordinates` callback signature** — need to verify exact signature matches what `esp_lcd_touch` v1.0.4+ expects. If it doesn't support user_data, we may need a static handle pointer.
+2. **`process_coordinates` callback** — RESOLVED: doesn't pass user_data, so component uses a static singleton `s_handle` pointer. Also stores raw ADC values before mapping for calibration to consume.
 
-3. **XPT2046 Kconfig rename** — existing `CONFIG_XPT2046_*` references in xpt2046.c need updating to `CONFIG_MSP3520_XPT2046_*`.
+3. **XPT2046 Kconfig rename** — RESOLVED: all `CONFIG_XPT2046_*` renamed to `CONFIG_MSP3520_XPT2046_*`, z_threshold to `CONFIG_MSP3520_TOUCH_Z_THRESHOLD`.
 
-4. **Managed component resolution** — `esp_lvgl_port` depends on `lvgl`. Our component also depends on `lvgl`. Need to verify the component manager resolves this cleanly without version conflicts.
+4. **ESP-IDF component name** — RESOLVED: IDF v5.5.3 uses `console` not `esp_console` as the component name.

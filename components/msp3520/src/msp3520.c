@@ -6,8 +6,10 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_lvgl_port.h"
+
+#define LVGL_TICK_PERIOD_MS 2
 
 static const char *TAG = "msp3520";
 
@@ -20,14 +22,24 @@ static void process_coordinates_cb(esp_lcd_touch_handle_t tp,
                                    uint8_t *point_num,
                                    uint8_t max_point_num)
 {
-    if (!s_handle || !s_handle->cal.valid || *point_num == 0) return;
+    if (!s_handle || *point_num == 0) return;
+
+    /* Store raw ADC values before any mapping (used by calibration) */
+    s_handle->last_raw_x = x[0];
+    s_handle->last_raw_y = y[0];
 
     for (uint8_t i = 0; i < *point_num; i++) {
-        uint16_t sx, sy;
-        touch_cal_apply(&s_handle->cal, x[i], y[i], &sx, &sy,
-                        MSP3520_H_RES, MSP3520_V_RES);
-        x[i] = sx;
-        y[i] = sy;
+        if (s_handle->cal.valid) {
+            uint16_t sx, sy;
+            touch_cal_apply(&s_handle->cal, x[i], y[i], &sx, &sy,
+                            MSP3520_H_RES, MSP3520_V_RES);
+            x[i] = sx;
+            y[i] = sy;
+        } else {
+            /* Rough linear map from ADC range to screen coordinates */
+            x[i] = (uint16_t)((uint32_t)x[i] * MSP3520_H_RES / 4096);
+            y[i] = (uint16_t)((uint32_t)y[i] * MSP3520_V_RES / 4096);
+        }
     }
 }
 
@@ -35,6 +47,66 @@ static void IRAM_ATTR touch_isr_handler(void *arg)
 {
     esp_lcd_touch_xpt2046_notify_touch();
 }
+
+/* -- LVGL callbacks ------------------------------------------------ */
+
+static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
+                           uint8_t *px_map)
+{
+    esp_lcd_panel_handle_t panel = lv_display_get_user_data(disp);
+    esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1,
+                              area->x2 + 1, area->y2 + 1, px_map);
+}
+
+static bool flush_ready_cb(esp_lcd_panel_io_handle_t panel_io,
+                            esp_lcd_panel_io_event_data_t *edata,
+                            void *user_ctx)
+{
+    lv_display_flush_ready((lv_display_t *)user_ctx);
+    return false;
+}
+
+static void lvgl_tick_cb(void *arg)
+{
+    lv_tick_inc(LVGL_TICK_PERIOD_MS);
+}
+
+static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    esp_lcd_touch_handle_t touch = lv_indev_get_user_data(indev);
+    esp_lcd_touch_read_data(touch);
+
+    uint16_t x, y;
+    uint8_t count = 0;
+    esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &count, 1);
+
+    if (count > 0) {
+        ESP_LOGD(TAG, "touch: x=%u y=%u count=%u", x, y, count);
+        data->point.x = x;
+        data->point.y = y;
+        data->state = LV_INDEV_STATE_PRESSED;
+    } else {
+        data->state = LV_INDEV_STATE_RELEASED;
+    }
+}
+
+static void lvgl_task(void *arg)
+{
+    msp3520_handle_t h = (msp3520_handle_t)arg;
+    ESP_LOGI(TAG, "LVGL task started");
+    uint32_t time_threshold_ms = 1000 / CONFIG_FREERTOS_HZ;
+    while (1) {
+        xSemaphoreTakeRecursive(h->lvgl_mutex, portMAX_DELAY);
+        uint32_t next_ms = lv_timer_handler();
+        xSemaphoreGiveRecursive(h->lvgl_mutex);
+        if (next_ms < time_threshold_ms) {
+            next_ms = time_threshold_ms;
+        }
+        vTaskDelay(pdMS_TO_TICKS(next_ms));
+    }
+}
+
+/* -- Init helpers -------------------------------------------------- */
 
 static esp_err_t init_display_spi(msp3520_handle_t h)
 {
@@ -138,43 +210,62 @@ static esp_err_t init_lvgl(msp3520_handle_t h)
 {
     const msp3520_config_t *c = &h->config;
 
-    const lvgl_port_cfg_t lvgl_cfg = {
-        .task_priority = c->lvgl_task_priority,
-        .task_stack = c->lvgl_task_stack_size,
-        .task_affinity = c->lvgl_task_core,
-        .task_max_sleep_ms = 500,
-        .timer_period_ms = 2,
-    };
-    ESP_RETURN_ON_ERROR(lvgl_port_init(&lvgl_cfg), TAG, "LVGL port init failed");
+    h->lvgl_mutex = xSemaphoreCreateRecursiveMutex();
+    ESP_RETURN_ON_FALSE(h->lvgl_mutex, ESP_ERR_NO_MEM, TAG, "LVGL mutex create failed");
+
+    lv_init();
 
     /* Display */
-    const lvgl_port_display_cfg_t disp_cfg = {
-        .io_handle = h->panel_io,
-        .panel_handle = h->panel,
-        .buffer_size = MSP3520_H_RES * c->lvgl_draw_buf_lines * sizeof(lv_color_t),
-        .double_buffer = true,
-        .hres = MSP3520_H_RES,
-        .vres = MSP3520_V_RES,
-        .color_format = LV_COLOR_FORMAT_RGB888,
-        .flags = {
-            .buff_dma = true,
-            .buff_spiram = false,
-            .swap_bytes = false,
-        },
-    };
-    h->display = lvgl_port_add_disp(&disp_cfg);
-    ESP_RETURN_ON_FALSE(h->display, ESP_FAIL, TAG, "LVGL display add failed");
+    size_t buf_sz = MSP3520_H_RES * c->lvgl_draw_buf_lines * 3; /* RGB888 */
+    h->display = lv_display_create(MSP3520_H_RES, MSP3520_V_RES);
+    ESP_RETURN_ON_FALSE(h->display, ESP_FAIL, TAG, "LVGL display create failed");
 
-    /* Touch */
-    const lvgl_port_touch_cfg_t touch_cfg = {
-        .disp = h->display,
-        .handle = h->touch,
+    lv_display_set_color_format(h->display, LV_COLOR_FORMAT_RGB888);
+    lv_display_set_user_data(h->display, h->panel);
+    lv_display_set_flush_cb(h->display, lvgl_flush_cb);
+
+    void *buf1 = heap_caps_malloc(buf_sz, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    void *buf2 = heap_caps_malloc(buf_sz, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "LVGL buffer alloc failed");
+    lv_display_set_buffers(h->display, buf1, buf2, buf_sz,
+                            LV_DISPLAY_RENDER_MODE_PARTIAL);
+
+    const esp_lcd_panel_io_callbacks_t cbs = {
+        .on_color_trans_done = flush_ready_cb,
     };
-    h->indev = lvgl_port_add_touch(&touch_cfg);
-    ESP_RETURN_ON_FALSE(h->indev, ESP_FAIL, TAG, "LVGL touch add failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_register_event_callbacks(
+        h->panel_io, &cbs, h->display), TAG, "panel IO callback register failed");
+
+    /* Touch input device */
+    h->indev = lv_indev_create();
+    ESP_RETURN_ON_FALSE(h->indev, ESP_FAIL, TAG, "LVGL indev create failed");
+    lv_indev_set_type(h->indev, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(h->indev, touch_read_cb);
+    lv_indev_set_user_data(h->indev, h->touch);
+    lv_indev_set_display(h->indev, h->display);
+
+    /* Tick timer */
+    const esp_timer_create_args_t tick_args = {
+        .callback = lvgl_tick_cb,
+        .name = "lvgl_tick",
+    };
+    ESP_RETURN_ON_ERROR(esp_timer_create(&tick_args, &h->lvgl_tick_timer),
+                        TAG, "LVGL tick timer create failed");
+    ESP_RETURN_ON_ERROR(esp_timer_start_periodic(h->lvgl_tick_timer,
+                        LVGL_TICK_PERIOD_MS * 1000),
+                        TAG, "LVGL tick timer start failed");
+
+    /* LVGL task */
+    BaseType_t xret = xTaskCreatePinnedToCore(lvgl_task, "lvgl",
+                        c->lvgl_task_stack_size, h,
+                        c->lvgl_task_priority, &h->lvgl_task_handle,
+                        c->lvgl_task_core < 0 ? tskNO_AFFINITY : c->lvgl_task_core);
+    ESP_RETURN_ON_FALSE(xret == pdPASS, ESP_FAIL, TAG, "LVGL task create failed");
 
     return ESP_OK;
 }
+
+/* -- Public API ---------------------------------------------------- */
 
 esp_err_t msp3520_create(const msp3520_config_t *config, msp3520_handle_t *out_handle)
 {
@@ -225,10 +316,22 @@ esp_err_t msp3520_destroy(msp3520_handle_t handle)
 {
     if (!handle) return ESP_OK;
 
-    if (handle->display) {
-        lvgl_port_remove_disp(handle->display);
+    if (handle->lvgl_task_handle) {
+        vTaskDelete(handle->lvgl_task_handle);
     }
-    lvgl_port_deinit();
+    if (handle->lvgl_tick_timer) {
+        esp_timer_stop(handle->lvgl_tick_timer);
+        esp_timer_delete(handle->lvgl_tick_timer);
+    }
+    if (handle->display) {
+        /* Free draw buffers */
+        lv_display_set_buffers(handle->display, NULL, NULL, 0,
+                               LV_DISPLAY_RENDER_MODE_PARTIAL);
+        lv_display_delete(handle->display);
+    }
+    if (handle->indev) {
+        lv_indev_delete(handle->indev);
+    }
 
     if (handle->touch) {
         esp_lcd_touch_del(handle->touch);
@@ -247,6 +350,9 @@ esp_err_t msp3520_destroy(msp3520_handle_t handle)
     }
     if (handle->display_bus_initialized) {
         spi_bus_free(handle->config.display_spi_host);
+    }
+    if (handle->lvgl_mutex) {
+        vSemaphoreDelete(handle->lvgl_mutex);
     }
 
     if (s_handle == handle) {
@@ -268,12 +374,16 @@ lv_indev_t *msp3520_get_indev(msp3520_handle_t handle)
 
 bool msp3520_lvgl_lock(msp3520_handle_t handle, uint32_t timeout_ms)
 {
-    return lvgl_port_lock(timeout_ms);
+    if (!handle || !handle->lvgl_mutex) return false;
+    TickType_t ticks = (timeout_ms == 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return xSemaphoreTakeRecursive(handle->lvgl_mutex, ticks) == pdTRUE;
 }
 
 void msp3520_lvgl_unlock(msp3520_handle_t handle)
 {
-    lvgl_port_unlock();
+    if (handle && handle->lvgl_mutex) {
+        xSemaphoreGiveRecursive(handle->lvgl_mutex);
+    }
 }
 
 esp_err_t msp3520_set_backlight(msp3520_handle_t handle, uint8_t brightness)

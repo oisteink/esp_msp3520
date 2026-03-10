@@ -177,7 +177,7 @@ The ILI9488 and XPT2046 drivers would be compiled as part of the component (not 
 
 These were resolved through discussion:
 
-1. **Use `esp_lvgl_port`** — Yes. It handles LVGL task, timer, locking, display/indev registration. Less code to maintain, Espressif-maintained. Calibration hooks in via `esp_lcd_touch_config_t.process_coordinates` callback, so no conflict. This is *not* the BSP — it's a pure plumbing layer with no hardware opinion.
+1. **Manual LVGL integration** — Initially planned to use `esp_lvgl_port`, but it rejects DMA buffers for non-RGB565 color formats. Since ILI9488 uses RGB888, this is a hard blocker. The component now handles LVGL lifecycle manually: `lv_init()`, display/indev creation, flush callback, tick timer via `esp_timer`, LVGL task with `xSemaphoreCreateRecursiveMutex` for thread safety. This gives full control over buffer allocation (DMA-capable internal RAM with RGB888).
 
 2. **Hardware SPI only** — No software/bit-bang SPI. ESP-IDF doesn't provide software SPI for ESP32-S3 (only RISC-V chips). Each device (display, touch) independently picks a hardware SPI host via menuconfig. Same host = shared bus (component handles it). Different hosts = independent.
 
@@ -190,6 +190,8 @@ These were resolved through discussion:
 6. **Repo structure** — Same repo. Component lives in `components/msp3520/`. Current `main/` evolves into `examples/basic/`. Existing `esp_lcd_ili9488` and `xpt2046` components get absorbed into `msp3520` as internal sources.
 
 7. **BSP is a future layer** — A thin `esp32s3_msp3520` BSP could wrap the component with board-specific pin config. But the component is the real work; BSP is trivial on top.
+
+8. **Touch calibration fallback** — When uncalibrated, `process_coordinates_cb` applies a rough linear map (ADC/4096 * screen resolution) so touch is usable enough to complete the calibration UI. Raw ADC values are stored in the handle before mapping so the calibration algorithm receives actual raw values, not pre-mapped screen coordinates.
 
 ## 10. Open Questions (For Spec)
 

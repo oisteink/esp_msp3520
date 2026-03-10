@@ -5,7 +5,7 @@
 
 ## What We're Building
 
-A single ESP-IDF component (`msp3520`) that gives you a working LVGL display+touch from a config struct and one function call. It absorbs the ILI9488 driver, XPT2046 driver, touch calibration, and LVGL integration into one package. Uses `esp_lvgl_port` internally for LVGL lifecycle.
+A single ESP-IDF component (`msp3520`) that gives you a working LVGL display+touch from a config struct and one function call. It absorbs the ILI9488 driver, XPT2046 driver, touch calibration, and LVGL integration into one package. Manages LVGL lifecycle directly (task, tick timer, mutex locking, display/indev registration).
 
 The current project restructures: component in `components/msp3520/`, current app becomes `examples/basic/`.
 
@@ -69,9 +69,9 @@ App owns the REPL lifecycle (UART init, `esp_console_start_repl()`). Component j
 
 ### R6: Thread-safe LVGL access
 
-Wraps `esp_lvgl_port` locking:
+Component provides recursive mutex locking for LVGL access:
 ```c
-msp3520_lvgl_lock(handle, 0);
+msp3520_lvgl_lock(handle, 0);  // 0 = wait forever
 // LVGL API calls
 msp3520_lvgl_unlock(handle);
 ```
@@ -165,7 +165,7 @@ components/msp3520/
     console_commands.c        — REPL commands (from existing console.c, touch/display parts)
   Kconfig                     — all menuconfig options
   CMakeLists.txt
-  idf_component.yml           — declares deps on esp_lcd_touch, lvgl, esp_lvgl_port
+  idf_component.yml           — declares deps on esp_lcd_touch, lvgl
 
 examples/basic/
   main/
@@ -180,9 +180,9 @@ examples/basic/
 ```
 msp3520/
   REQUIRES: esp_lcd, lvgl                           — in public headers
-  PRIV_REQUIRES: esp_driver_spi, esp_driver_gpio,
-                 esp_timer, nvs_flash, esp_console
-  MANAGED: espressif/esp_lcd_touch, espressif/esp_lvgl_port
+  PRIV_REQUIRES: esp_driver_spi, esp_driver_gpio, esp_driver_ledc,
+                 esp_timer, nvs_flash, console
+  MANAGED: espressif/esp_lcd_touch, lvgl/lvgl
 ```
 
 ## Acceptance Criteria
