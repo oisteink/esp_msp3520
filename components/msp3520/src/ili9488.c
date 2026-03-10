@@ -13,7 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "esp_lcd_ili9488.h"
+#include "ili9488.h"
 
 static const char *TAG = "ili9488";
 

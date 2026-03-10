@@ -1,0 +1,178 @@
+menu "MSP3520 Display Module"
+
+    orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
+
+    menu "Display SPI"
+        choice MSP3520_DISPLAY_SPI_HOST
+            prompt "SPI Host"
+            default MSP3520_DISPLAY_SPI2
+
+            config MSP3520_DISPLAY_SPI2
+                bool "SPI2"
+            config MSP3520_DISPLAY_SPI3
+                bool "SPI3"
+                depends on SOC_SPI_PERIPH_NUM > 2
+        endchoice
+
+        config MSP3520_DISPLAY_SPI_HOST_ID
+            int
+            default 1 if MSP3520_DISPLAY_SPI2
+            default 2 if MSP3520_DISPLAY_SPI3
+
+        config MSP3520_DISPLAY_SCLK_GPIO
+            int "SCLK GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 11
+
+        config MSP3520_DISPLAY_MOSI_GPIO
+            int "MOSI GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 10
+
+        config MSP3520_DISPLAY_MISO_GPIO
+            int "MISO GPIO"
+            range -1 ENV_GPIO_OUT_RANGE_MAX
+            default 13
+            help
+                Set to -1 if not connected.
+
+        config MSP3520_DISPLAY_CS_GPIO
+            int "CS GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 3
+
+        config MSP3520_DISPLAY_DC_GPIO
+            int "DC GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 9
+
+        config MSP3520_DISPLAY_RST_GPIO
+            int "RST GPIO (-1 = software reset)"
+            range -1 ENV_GPIO_OUT_RANGE_MAX
+            default 46
+
+        config MSP3520_DISPLAY_BKL_GPIO
+            int "Backlight GPIO (-1 = none)"
+            range -1 ENV_GPIO_OUT_RANGE_MAX
+            default 12
+
+        config MSP3520_DISPLAY_BKL_ACTIVE_HIGH
+            bool "Backlight active high"
+            default y
+
+        config MSP3520_DISPLAY_SPI_CLOCK_MHZ
+            int "SPI clock (MHz)"
+            range 1 80
+            default 40
+    endmenu
+
+    menu "Touch SPI"
+        choice MSP3520_TOUCH_SPI_HOST
+            prompt "SPI Host"
+            default MSP3520_TOUCH_SPI3 if SOC_SPI_PERIPH_NUM > 2
+            default MSP3520_TOUCH_SPI2
+
+            config MSP3520_TOUCH_SPI2
+                bool "SPI2"
+            config MSP3520_TOUCH_SPI3
+                bool "SPI3"
+                depends on SOC_SPI_PERIPH_NUM > 2
+        endchoice
+
+        config MSP3520_TOUCH_SPI_HOST_ID
+            int
+            default 1 if MSP3520_TOUCH_SPI2
+            default 2 if MSP3520_TOUCH_SPI3
+
+        config MSP3520_TOUCH_SCLK_GPIO
+            int "SCLK GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 6
+
+        config MSP3520_TOUCH_MOSI_GPIO
+            int "MOSI GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 7
+
+        config MSP3520_TOUCH_MISO_GPIO
+            int "MISO GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 8
+
+        config MSP3520_TOUCH_CS_GPIO
+            int "CS GPIO"
+            range ENV_GPIO_RANGE_MIN ENV_GPIO_OUT_RANGE_MAX
+            default 4
+
+        config MSP3520_TOUCH_IRQ_GPIO
+            int "IRQ GPIO (-1 = polling)"
+            range -1 ENV_GPIO_OUT_RANGE_MAX
+            default 5
+
+        config MSP3520_TOUCH_Z_THRESHOLD
+            int "Touch pressure threshold"
+            range 10 1000
+            default 100
+            help
+                Touch pressure less than this value will be discarded.
+                Stylus: 300-500. Finger: 50-150.
+    endmenu
+
+    menu "LVGL"
+        choice MSP3520_LVGL_TASK_CORE
+            prompt "LVGL task core affinity"
+            default MSP3520_LVGL_CORE_NO_AFFINITY
+            depends on !FREERTOS_UNICORE
+
+            config MSP3520_LVGL_CORE_NO_AFFINITY
+                bool "No affinity"
+            config MSP3520_LVGL_CORE_0
+                bool "Core 0"
+            config MSP3520_LVGL_CORE_1
+                bool "Core 1"
+        endchoice
+
+        config MSP3520_LVGL_TASK_CORE_ID
+            int
+            default -1 if MSP3520_LVGL_CORE_NO_AFFINITY || FREERTOS_UNICORE
+            default 0 if MSP3520_LVGL_CORE_0
+            default 1 if MSP3520_LVGL_CORE_1
+
+        config MSP3520_LVGL_TASK_PRIORITY
+            int "LVGL task priority"
+            range 1 25
+            default 2
+
+        config MSP3520_LVGL_TASK_STACK_SIZE
+            int "LVGL task stack size (bytes)"
+            range 4096 32768
+            default 8192
+
+        config MSP3520_LVGL_DRAW_BUF_LINES
+            int "Draw buffer height (lines)"
+            range 48 480
+            default 48
+            help
+                Height of each LVGL draw buffer in lines.
+                Two buffers of this size are allocated from internal RAM.
+                Minimum is 1/10th of vertical resolution (48 lines).
+    endmenu
+
+    menu "XPT2046 Advanced"
+        config MSP3520_XPT2046_INTERRUPT_MODE
+            bool "Use PENIRQ interrupt"
+            default y
+            help
+                Enable PENIRQ output from XPT2046. When enabled, the IRQ pin
+                goes low when the screen is touched. Required for IRQ-driven
+                touch detection to avoid continuous SPI polling.
+
+        config MSP3520_XPT2046_VREF_ON_MODE
+            bool "Keep internal Vref on between conversions"
+            default n
+            help
+                Uses slightly more power, but requires fewer transactions when
+                reading battery voltage, aux voltage and temperature.
+    endmenu
+
+endmenu

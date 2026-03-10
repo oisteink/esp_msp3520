@@ -18,7 +18,7 @@ ESP-IDF project exploring SPI TFT displays with touch input.
 
 ## Development Process
 
-Work follows a 4-stage gated process. Each stage requires explicit user approval before moving to the next. All artifacts live in the `iteration/` directory and each stage builds on the previous.
+Work follows a 4-stage gated process. Each stage requires explicit user approval before moving to the next. All artifacts live in the `iteration/` directory and each stage builds on the previous. Once the iteration as a whole is approved these artifacts are archived in their own folder in `iteration/history/`
 
 ### Stage 1: Spec
 
