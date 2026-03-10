@@ -25,7 +25,7 @@ static const char *TAG = "app";
 #define LCD_BPP            3   // bytes per pixel (RGB888/RGB666)
 
 // LVGL draw buffer: 1/4 of screen height
-#define LVGL_DRAW_BUF_LINES  (LCD_V_RES / 4)
+#define LVGL_DRAW_BUF_LINES  LCD_V_RES
 
 // LVGL tick period
 #define LVGL_TICK_PERIOD_MS   2
@@ -381,7 +381,7 @@ void app_main(void)
     void *buf2 = heap_caps_malloc(buf_sz, MALLOC_CAP_SPIRAM);
     assert(buf2);
     lv_display_set_buffers(disp, buf1, buf2, buf_sz,
-                            LV_DISPLAY_RENDER_MODE_PARTIAL);
+                            LV_DISPLAY_RENDER_MODE_FULL);
 
     // Register SPI transfer-done callback to notify LVGL
     const esp_lcd_panel_io_callbacks_t cbs = {
@@ -414,8 +414,8 @@ void app_main(void)
 
     // Start LVGL task
     ESP_LOGI(TAG, "starting LVGL task");
-    xTaskCreate(lvgl_task, "lvgl", LVGL_TASK_STACK_SIZE, NULL,
-                LVGL_TASK_PRIORITY, NULL);
+    xTaskCreatePinnedToCore(lvgl_task, "lvgl", LVGL_TASK_STACK_SIZE, NULL,
+                            LVGL_TASK_PRIORITY, NULL, 1);
 
     // Console REPL
     app_ctx.panel = panel;
