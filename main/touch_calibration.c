@@ -113,3 +113,29 @@ esp_err_t touch_cal_clear(void)
     ESP_LOGI(TAG, "Calibration cleared");
     return err;
 }
+
+esp_err_t touch_z_threshold_save(uint16_t threshold)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) return err;
+
+    err = nvs_set_u16(nvs, "z_thresh", threshold);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs);
+    }
+    nvs_close(nvs);
+    return err;
+}
+
+uint16_t touch_z_threshold_load(uint16_t default_val)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs);
+    if (err != ESP_OK) return default_val;
+
+    uint16_t val = default_val;
+    nvs_get_u16(nvs, "z_thresh", &val);
+    nvs_close(nvs);
+    return val;
+}

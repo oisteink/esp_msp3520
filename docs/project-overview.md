@@ -14,11 +14,15 @@
 │   ├── CMakeLists.txt
 │   ├── idf_component.yml       # Managed component dependencies
 │   ├── Kconfig.projbuild       # Pin and config menu
-│   └── ili9488-test.c          # Entry point (app_main)
+│   ├── ili9488-test.c          # Entry point (app_main, HW init, LVGL setup)
+│   ├── console.c               # REPL commands, calibration UI screen
+│   ├── console.h               # Console API, app_context_t
+│   ├── touch_calibration.c     # Affine calibration math, NVS persistence
+│   └── touch_calibration.h     # Calibration types and API
 ├── components/
-│   └── esp_lcd_ili9488/        # ILI9488 display driver (local component)
+│   ├── esp_lcd_ili9488/        # ILI9488 display driver (local component)
+│   └── xpt2046/                # Forked XPT2046 touch driver (from atanisoft v1.0.6)
 ├── managed_components/         # Downloaded by ESP Component Manager
-│   ├── atanisoft__esp_lcd_touch_xpt2046/
 │   ├── espressif__esp_lcd_touch/
 │   └── lvgl__lvgl/
 ├── iteration/                  # Current iteration stage docs
@@ -37,6 +41,8 @@ This is a standard ESP-IDF v5.5.3 project targeting the **ESP32-S3 WROOM-2 N32R1
 
 - **`components/esp_lcd_ili9488/`** — Local ILI9488 driver using the `esp_lcd` panel interface. RGB888 passthrough (no color conversion). Only depends on ESP-IDF APIs.
 
+- **`components/xpt2046/`** — Forked XPT2046 touch driver (from atanisoft v1.0.6). Adds median filtering with outlier rejection, IRQ-driven detection, runtime Z-threshold control, and PENIRQ support.
+
 - **LVGL** — v9.5, RGB888 color format, full-screen double-buffered rendering from PSRAM. LVGL task pinned to core 1.
 
 ## External Components
@@ -45,7 +51,7 @@ Third-party components come from the [ESP Component Registry](https://components
 
 Current dependencies:
 - **`lvgl/lvgl^9.5.0`** — Graphics library
-- **`atanisoft/esp_lcd_touch_xpt2046^1.0.0`** — XPT2046 resistive touch driver (pulls in `espressif/esp_lcd_touch`)
+- **`espressif/esp_lcd_touch`** — Touch interface (pulled in by local `xpt2046` component)
 
 ## Wiring: ESP32-S3 DevKitC-1 ↔ MSP3520
 
@@ -78,6 +84,23 @@ Key non-default settings persisted in `sdkconfig.defaults`:
 - `CONFIG_LOG_MAXIMUM_LEVEL=4` (DEBUG compiled in)
 - Idle task watchdog disabled on both cores (LVGL blocks core 1)
 - LVGL: 24-bit color depth, Montserrat 28 font
+
+## Console Commands
+
+REPL on UART (`tft>` prompt). Commands defined in `main/console.c`.
+
+| Command | Description |
+|---------|-------------|
+| `touch` | Show touch status (z_threshold, calibration, flags) |
+| `touch z <val>` | Set Z-pressure threshold (saved to NVS) |
+| `touch cal start` | Start 3-point crosshair calibration screen |
+| `touch cal show` | Show calibration coefficients |
+| `touch cal clear` | Clear calibration from NVS |
+| `touch swap_xy\|mirror_x\|mirror_y <0\|1>` | Set touch coordinate flags |
+| `rotation [swap_xy\|mirror_x\|mirror_y] [0\|1]` | Get/set display rotation flags |
+| `log_level <tag> <level>` | Set log level for a tag |
+| `debug` | Toggle debug logging for app/driver tags |
+| `info` | Show chip info, heap, uptime |
 
 ## Build
 

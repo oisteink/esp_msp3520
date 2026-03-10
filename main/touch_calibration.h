@@ -32,3 +32,9 @@ esp_err_t touch_cal_load(touch_cal_t *cal);
 
 // Clear calibration from NVS
 esp_err_t touch_cal_clear(void);
+
+// Save z_threshold to NVS
+esp_err_t touch_z_threshold_save(uint16_t threshold);
+
+// Load z_threshold from NVS (returns default_val if not found)
+uint16_t touch_z_threshold_load(uint16_t default_val);
