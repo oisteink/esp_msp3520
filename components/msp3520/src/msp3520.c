@@ -76,14 +76,14 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     esp_lcd_touch_handle_t touch = lv_indev_get_user_data(indev);
     esp_lcd_touch_read_data(touch);
 
-    uint16_t x, y;
+    esp_lcd_touch_point_data_t point;
     uint8_t count = 0;
-    esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &count, 1);
+    esp_lcd_touch_get_data(touch, &point, &count, 1);
 
     if (count > 0) {
-        ESP_LOGD(TAG, "touch: x=%u y=%u count=%u", x, y, count);
-        data->point.x = x;
-        data->point.y = y;
+        ESP_LOGD(TAG, "touch: x=%u y=%u count=%u", point.x, point.y, count);
+        data->point.x = point.x;
+        data->point.y = point.y;
         data->state = LV_INDEV_STATE_PRESSED;
     } else {
         data->state = LV_INDEV_STATE_RELEASED;

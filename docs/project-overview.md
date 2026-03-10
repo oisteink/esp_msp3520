@@ -107,7 +107,7 @@ The msp3520 component provides optional REPL commands (registered via `msp3520_r
 | `display` | Show display info and usage |
 | `display backlight <0-100>` | Set backlight brightness |
 | `display rotation [swap_xy\|mirror_x\|mirror_y] [0\|1]` | Set display rotation flags |
-| `display perf <on\|off>` | Toggle LVGL performance monitor overlay (requires `LV_USE_PERF_MONITOR`) |
+| `display perf <on\|off>` | Toggle LVGL performance and memory monitor overlays (requires `LV_USE_PERF_MONITOR` / `LV_USE_MEM_MONITOR`) |
 
 ## Build
 

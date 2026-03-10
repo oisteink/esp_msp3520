@@ -248,7 +248,7 @@ static int cmd_display(void *ctx, int argc, char **argv)
         printf("Display: %dx%d\n", MSP3520_H_RES, MSP3520_V_RES);
         printf("Use: display backlight <0-100>\n");
         printf("     display rotation [swap_xy|mirror_x|mirror_y] [0|1]\n");
-#if LV_USE_PERF_MONITOR
+#if LV_USE_PERF_MONITOR || LV_USE_MEM_MONITOR
         printf("     display perf <on|off>\n");
 #endif
         return 0;
@@ -256,7 +256,7 @@ static int cmd_display(void *ctx, int argc, char **argv)
 
     const char *sub = argv[1];
 
-#if LV_USE_PERF_MONITOR
+#if LV_USE_PERF_MONITOR || LV_USE_MEM_MONITOR
     if (strcmp(sub, "perf") == 0) {
         if (argc != 3) {
             printf("Usage: display perf <on|off>\n");
@@ -264,10 +264,20 @@ static int cmd_display(void *ctx, int argc, char **argv)
         }
         msp3520_lvgl_lock(h, 0);
         if (strcmp(argv[2], "on") == 0) {
+#if LV_USE_PERF_MONITOR
             lv_sysmon_show_performance(h->display);
+#endif
+#if LV_USE_MEM_MONITOR
+            lv_sysmon_show_memory(h->display);
+#endif
             printf("Perf monitor: on\n");
         } else {
+#if LV_USE_PERF_MONITOR
             lv_sysmon_hide_performance(h->display);
+#endif
+#if LV_USE_MEM_MONITOR
+            lv_sysmon_hide_memory(h->display);
+#endif
             printf("Perf monitor: off\n");
         }
         msp3520_lvgl_unlock(h);
