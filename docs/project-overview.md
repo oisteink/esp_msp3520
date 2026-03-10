@@ -8,42 +8,35 @@
 ## Structure
 
 ```
-├── CMakeLists.txt              # Top-level ESP-IDF project file
-├── sdkconfig.defaults          # Build defaults (octal flash/PSRAM, pins, etc.)
-├── main/                       # Application
-│   ├── CMakeLists.txt
-│   ├── idf_component.yml       # Managed component dependencies
-│   ├── Kconfig.projbuild       # Pin and config menu
-│   ├── ili9488-test.c          # Entry point (app_main, HW init, LVGL setup)
-│   ├── console.c               # REPL commands, calibration UI screen
-│   ├── console.h               # Console API, app_context_t
-│   ├── touch_calibration.c     # Affine calibration math, NVS persistence
-│   └── touch_calibration.h     # Calibration types and API
 ├── components/
-│   ├── esp_lcd_ili9488/        # ILI9488 display driver (local component)
-│   └── xpt2046/                # Forked XPT2046 touch driver (from atanisoft v1.0.6)
-├── managed_components/         # Downloaded by ESP Component Manager
-│   ├── espressif__esp_lcd_touch/
-│   └── lvgl__lvgl/
-├── iteration/                  # Current iteration stage docs
-│   └── history/                # Archived iteration docs
-├── docs/
-│   ├── devkits/                # Board documentation
-│   ├── modules/                # Screen/peripheral documentation
-│   └── plans/                  # Design documents per iteration
+│   └── msp3520/                  # Reusable component
+│       ├── include/msp3520.h     # Public API
+│       ├── src/                  # Implementation (display, touch, LVGL, calibration, CLI)
+│       ├── CMakeLists.txt
+│       └── Kconfig               # Pin and config menu
+├── examples/
+│   ├── basic/                    # Simple tap-counter demo
+│   │   ├── main/main.c
+│   │   └── sdkconfig.defaults
+│   └── finger-paint/             # Full-screen drawing app
+│       ├── main/finger-paint.c
+│       └── sdkconfig.defaults
+├── iteration/                    # Current iteration stage docs
+│   └── history/                  # Archived iteration docs
+└── docs/
+    ├── devkits/                  # Board documentation
+    └── modules/                  # Screen/peripheral documentation
 ```
 
 ## How it fits together
 
-This is a standard ESP-IDF v5.5.3 project targeting the **ESP32-S3 WROOM-2 N32R16V**.
+The **msp3520 component** (`components/msp3520/`) wraps all hardware and LVGL integration into a single reusable unit. Example projects in `examples/` consume it via `EXTRA_COMPONENT_DIRS`.
 
-- **`main/`** — The application. Initializes two SPI buses (display + touch), runs LVGL with an interactive UI and a REPL console. Pin assignments are configurable via Kconfig.
+- **`components/msp3520/`** — Initializes SPI buses, ILI9488 display driver (RGB888), XPT2046 touch driver, LVGL (manual integration, no esp_lvgl_port), 3-point affine touch calibration with NVS persistence, and optional REPL commands. Pin assignments configurable via Kconfig.
 
-- **`components/esp_lcd_ili9488/`** — Local ILI9488 driver using the `esp_lcd` panel interface. RGB888 passthrough (no color conversion). Only depends on ESP-IDF APIs.
+- **`examples/basic/`** — Minimal example: button with tap counter, coordinate display, REPL console.
 
-- **`components/xpt2046/`** — Forked XPT2046 touch driver (from atanisoft v1.0.6). Adds median filtering with outlier rejection, IRQ-driven detection, runtime Z-threshold control, and PENIRQ support.
-
-- **LVGL** — v9.5, RGB888 color format, full-screen double-buffered rendering from PSRAM. LVGL task pinned to core 1.
+- **`examples/finger-paint/`** — Full-screen canvas drawing app with color picker and clear button. Border grid shows touch edge-reach dead zones. LVGL perf monitor togglable via CLI.
 
 ## External Components
 
@@ -51,7 +44,7 @@ Third-party components come from the [ESP Component Registry](https://components
 
 Current dependencies:
 - **`lvgl/lvgl^9.5.0`** — Graphics library
-- **`espressif/esp_lcd_touch`** — Touch interface (pulled in by local `xpt2046` component)
+- **`espressif/esp_lcd_touch`** — Touch interface (pulled in by msp3520 component)
 
 ## Wiring: ESP32-S3 DevKitC-1 ↔ MSP3520
 
@@ -77,17 +70,18 @@ Display on SPI2, touch on dedicated SPI3. All direct wires, no breadboard.
 
 ## sdkconfig.defaults
 
-Key non-default settings persisted in `sdkconfig.defaults`:
+Key non-default settings persisted in each example's `sdkconfig.defaults`:
 
 - Octal flash (32MB) and octal PSRAM (16MB, 80MHz)
 - SPI2 display pins and SPI3 touch pins
 - `CONFIG_LOG_MAXIMUM_LEVEL=4` (DEBUG compiled in)
 - Idle task watchdog disabled on both cores (LVGL blocks core 1)
 - LVGL: 24-bit color depth, Montserrat 28 font
+- finger-paint also enables: `LV_USE_SYSMON`, `LV_USE_PERF_MONITOR`
 
 ## Console Commands
 
-REPL on UART (`tft>` prompt). Commands defined in `main/console.c`.
+The msp3520 component provides optional REPL commands (registered via `msp3520_register_console_commands()`).
 
 | Command | Description |
 |---------|-------------|
@@ -97,15 +91,16 @@ REPL on UART (`tft>` prompt). Commands defined in `main/console.c`.
 | `touch cal show` | Show calibration coefficients |
 | `touch cal clear` | Clear calibration from NVS |
 | `touch swap_xy\|mirror_x\|mirror_y <0\|1>` | Set touch coordinate flags |
-| `rotation [swap_xy\|mirror_x\|mirror_y] [0\|1]` | Get/set display rotation flags |
-| `log_level <tag> <level>` | Set log level for a tag |
-| `debug` | Toggle debug logging for app/driver tags |
-| `info` | Show chip info, heap, uptime |
+| `display` | Show display info and usage |
+| `display backlight <0-100>` | Set backlight brightness |
+| `display rotation [swap_xy\|mirror_x\|mirror_y] [0\|1]` | Set display rotation flags |
+| `display perf <on\|off>` | Toggle LVGL performance monitor overlay (requires `LV_USE_PERF_MONITOR`) |
 
 ## Build
 
 ```sh
 source ~/esp/v5.5.3/esp-idf/export.sh
+cd examples/basic          # or examples/finger-paint
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```

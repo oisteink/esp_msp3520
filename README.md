@@ -1,25 +1,41 @@
-# explore-tft-spi-touch
+# esp-msp3520
 
-Learning project: drive an ILI9488 3.5" SPI TFT display with touch input from ESP32, then explore LVGL.
-
-## Goals
-
-1. Get the ILI9488 (MSP3520) displaying something over SPI
-2. Get touch input working
-3. Integrate LVGL and build simple UIs
+Reusable ESP-IDF component for the MSP3520 display module (3.5" ILI9488 SPI TFT + XPT2046 resistive touch), with LVGL v9.5 integration.
 
 ## Hardware
 
 - **Display**: 3.5" ILI9488 SPI TFT (MSP3520) with resistive touch
-- **Boards** (on hand):
-  - ESP32-S3-DevKitC-1
-  - ESP32-C6 Super Mini
-  - NanoESP32-C6
-  - XIAO ESP32-C6
+- **Target**: ESP32-S3-DevKitC-1 (tested)
 
 See `docs/` for per-component details.
 
 ## Stack
 
 - ESP-IDF v5.5.3
-- LVGL (later)
+- LVGL v9.5 (RGB888, manual integration — no esp_lvgl_port)
+
+## Structure
+
+```
+components/msp3520/     Reusable component (display, touch, LVGL, calibration, CLI)
+examples/basic/         Simple tap-counter demo
+examples/finger-paint/  Full-screen drawing app (touch edge-reach diagnostic)
+docs/                   Hardware and project documentation
+```
+
+## Quick Start
+
+```sh
+source ~/esp/v5.5.3/esp-idf/export.sh
+cd examples/basic        # or examples/finger-paint
+idf.py build
+idf.py -p /dev/ttyUSB0 flash monitor
+```
+
+## Examples
+
+### basic
+Minimal example: button with tap counter and coordinate display. Demonstrates component init, UI creation, and REPL.
+
+### finger-paint
+Full-screen canvas drawing app. Draw with your finger or stylus, pick colors, clear the canvas. Includes a border grid to visualize touch edge-reach dead zones. LVGL performance monitor available via `display perf on`.
