@@ -2,6 +2,7 @@
 #include "ili9488.h"
 #include "xpt2046.h"
 #include "backlight.h"
+#include "screen_protect.h"
 
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
@@ -303,6 +304,9 @@ esp_err_t msp3520_create(const msp3520_config_t *config, msp3520_handle_t *out_h
     /* LVGL */
     ESP_GOTO_ON_ERROR(init_lvgl(h), err, TAG, "LVGL init failed");
 
+    /* Screen protection (fade-in from dark, inactivity monitoring) */
+    ESP_GOTO_ON_ERROR(screen_protect_init(h), err, TAG, "screen protect init failed");
+
     ESP_LOGI(TAG, "MSP3520 initialized successfully");
     *out_handle = h;
     return ESP_OK;
@@ -315,6 +319,8 @@ err:
 esp_err_t msp3520_destroy(msp3520_handle_t handle)
 {
     if (!handle) return ESP_OK;
+
+    screen_protect_deinit(handle);
 
     if (handle->lvgl_task_handle) {
         vTaskDelete(handle->lvgl_task_handle);
@@ -388,6 +394,13 @@ void msp3520_lvgl_unlock(msp3520_handle_t handle)
 
 esp_err_t msp3520_set_backlight(msp3520_handle_t handle, uint8_t brightness)
 {
+    if (handle) {
+        handle->saved_brightness = brightness;
+        handle->screen_state = 0; /* SP_ACTIVE */
+        if (handle->display) {
+            lv_display_trigger_activity(handle->display);
+        }
+    }
     return backlight_set(brightness);
 }
 

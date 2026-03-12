@@ -26,4 +26,12 @@ struct msp3520_t {
     SemaphoreHandle_t lvgl_mutex;
     esp_timer_handle_t lvgl_tick_timer;
     TaskHandle_t lvgl_task_handle;
+    /* Screen protection */
+    uint8_t screen_state;
+    uint8_t saved_brightness;
+    uint8_t dim_timeout_min;
+    uint8_t off_timeout_min;
+    int64_t wake_timestamp_us;
+    lv_timer_t *screen_protect_timer;
+    esp_timer_handle_t dispoff_timer;
 };

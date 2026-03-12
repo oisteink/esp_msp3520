@@ -10,8 +10,8 @@ Two new Kconfig settings under the existing MSP3520 menu:
 
 | Setting | Type | Default | Unit | Range |
 |---------|------|---------|------|-------|
-| Screen dim timeout | int | 0 | minutes | 0–60 |
-| Screen off timeout | int | 0 | minutes | 0–60 |
+| Screen dim timeout | int | 10 | minutes | 0–60 |
+| Screen off timeout | int | 50 | minutes | 0–60 |
 | Fade out time | int | 1000 | ms | 0–5000 |
 | Fade in time | int | 1000 | ms | 0–5000 |
 
@@ -37,9 +37,10 @@ All backlight transitions use **LEDC hardware fade** for smooth, CPU-free bright
 
 ## Touch Handling on Wake
 
-When the screen is dimmed, off, or fading in (startup or wake):
+When the screen is dimmed or off and the user touches:
 - The touch wakes the screen (restores backlight, resets timers).
-- Touch events are **consumed** for the entire duration of the fade-in — they should NOT pass through to the LVGL UI as clicks/presses. This prevents accidental button presses when waking or during startup.
+- Touch events are **consumed for ~250ms** after wake to prevent accidental button presses. The fade-in runs in hardware independently — touch is not blocked for its full duration.
+- Same applies on startup: touch events consumed for ~250ms after the fade-in begins.
 
 ## Console Commands
 
@@ -56,7 +57,7 @@ Extend existing REPL:
 - No new FreeRTOS tasks — use `esp_timer` or LVGL timer callbacks.
 - State transitions: `active → dimmed → off` (or `active → off` when dim=0).
 - Backlight transitions use LEDC hardware fade (`ledc_set_fade_with_time` + `ledc_fade_start`). The existing `backlight_set()` must be reworked to install the fade service and support fading.
-- State transitions include a FADING_IN state during which touch events are consumed: `startup/wake → fading_in → active → dimmed → off`.
+- After wake/startup, touch events are consumed for ~250ms (not the full fade-in duration).
 
 ## Out of Scope
 

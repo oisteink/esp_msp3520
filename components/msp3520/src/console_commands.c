@@ -1,6 +1,7 @@
 #include "msp3520_priv.h"
 #include "xpt2046.h"
 #include "backlight.h"
+#include "screen_protect.h"
 
 #include "esp_console.h"
 #include "esp_log.h"
@@ -248,6 +249,9 @@ static int cmd_display(void *ctx, int argc, char **argv)
         printf("Display: %dx%d\n", MSP3520_H_RES, MSP3520_V_RES);
         printf("Use: display backlight <0-100>\n");
         printf("     display rotation [swap_xy|mirror_x|mirror_y] [0|1]\n");
+        printf("     display dim <minutes>   (0=disable)\n");
+        printf("     display off <minutes>   (0=disable)\n");
+        printf("     display status\n");
 #if LV_USE_PERF_MONITOR || LV_USE_MEM_MONITOR
         printf("     display perf <on|off>\n");
 #endif
@@ -315,6 +319,48 @@ static int cmd_display(void *ctx, int argc, char **argv)
         return 0;
     }
 
+    if (strcmp(sub, "dim") == 0) {
+        if (argc != 3) {
+            printf("Usage: display dim <minutes>\n");
+            return 1;
+        }
+        int val = atoi(argv[2]);
+        if (val < 0 || val > 60) {
+            printf("Range: 0-60 minutes\n");
+            return 1;
+        }
+        screen_protect_set_dim_timeout(h, (uint8_t)val);
+        printf("Dim timeout set to %d min\n", val);
+        return 0;
+    }
+
+    if (strcmp(sub, "off") == 0) {
+        if (argc != 3) {
+            printf("Usage: display off <minutes>\n");
+            return 1;
+        }
+        int val = atoi(argv[2]);
+        if (val < 0 || val > 60) {
+            printf("Range: 0-60 minutes\n");
+            return 1;
+        }
+        screen_protect_set_off_timeout(h, (uint8_t)val);
+        printf("Off timeout set to %d min\n", val);
+        return 0;
+    }
+
+    if (strcmp(sub, "status") == 0) {
+        const char *state;
+        uint8_t dim_min, off_min;
+        uint32_t idle_ms;
+        screen_protect_get_status(h, &state, &dim_min, &off_min, &idle_ms);
+        printf("State: %s\n", state);
+        printf("Dim timeout: %u min\n", dim_min);
+        printf("Off timeout: %u min\n", off_min);
+        printf("Idle: %"PRIu32"ms (%.1f min)\n", idle_ms, idle_ms / 60000.0);
+        return 0;
+    }
+
     printf("Unknown subcommand: %s\n", sub);
     return 1;
 }
@@ -333,8 +379,8 @@ esp_err_t msp3520_register_console_commands(msp3520_handle_t handle)
 
     esp_console_cmd_register(&(esp_console_cmd_t){
         .command = "display",
-        .help = "Display control (backlight, rotation, perf)",
-        .hint = "[backlight <0-100>|rotation <flag> <0|1>|perf <on|off>]",
+        .help = "Display control (backlight, rotation, screen protection, perf)",
+        .hint = "[backlight <0-100>|rotation <flag> <0|1>|dim <min>|off <min>|status|perf <on|off>]",
         .func_w_context = cmd_display,
         .context = handle,
     });

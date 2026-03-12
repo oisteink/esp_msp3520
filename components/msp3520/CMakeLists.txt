@@ -5,6 +5,7 @@ idf_component_register(
          "src/touch_calibration.c"
          "src/console_commands.c"
          "src/backlight.c"
+         "src/screen_protect.c"
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src"
     REQUIRES esp_lcd lvgl

@@ -166,6 +166,40 @@ menu "MSP3520 Display Module"
                 Minimum is 1/10th of vertical resolution (48 lines).
     endmenu
 
+    menu "Screen Protection"
+        config MSP3520_SCREEN_DIM_TIMEOUT
+            int "Dim timeout (minutes, 0=disable)"
+            range 0 60
+            default 10
+            help
+                Minutes of touch inactivity before dimming the backlight.
+                Set to 0 to disable dimming.
+
+        config MSP3520_SCREEN_OFF_TIMEOUT
+            int "Off timeout after dim (minutes, 0=disable)"
+            range 0 60
+            default 50
+            help
+                Minutes of touch inactivity after dimming before turning off
+                the display. Set to 0 to never turn off. If dim is 0, this
+                timeout runs from the last touch instead.
+
+        config MSP3520_SCREEN_FADE_OUT_MS
+            int "Fade out time (ms)"
+            range 0 5000
+            default 1000
+            help
+                Duration of the backlight fade-out when dimming or turning off.
+
+        config MSP3520_SCREEN_FADE_IN_MS
+            int "Fade in time (ms)"
+            range 0 5000
+            default 1000
+            help
+                Duration of the backlight fade-in on startup and wake from
+                dim or off state.
+    endmenu
+
     menu "XPT2046 Advanced"
         config MSP3520_XPT2046_INTERRUPT_MODE
             bool "Use PENIRQ interrupt"
