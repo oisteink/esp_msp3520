@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "examples/basic", "name": "Basic example"
+		},
+		{
+			"path": "examples/finger-paint", "name": "Painting example"
+		},
+		{
+			"path": ".", "name": "repo"
+		}
+
+	],
+	"settings": {}
+}
