@@ -1,7 +1,0 @@
-CompileFlags:
-  Add: [-Wno-unknown-warning-option]
-  Remove:
-    - -mlongcalls
-    - -fstrict-volatile-bitfields
-    - -fno-tree-switch-conversion
-    - -fno-shrink-wrap
