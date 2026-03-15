@@ -1,66 +1,72 @@
-# Spec: Screen Burn-in Protection
+# Spec: MSP3520 Component Integration Tests + Timeout Unit Change
 
 ## Goal
 
-Protect the ILI9488 display from burn-in by dimming and/or turning off the backlight after periods of touch inactivity. Provide a smooth startup experience with a fade-in from dark.
+1. Change screen protection timeout internals from minutes to seconds. Kconfig stays in minutes (user-friendly), console commands and API use seconds (test-friendly).
+2. On-target integration tests for the MSP3520 component that catch behavioral drift — especially screen burn-in protection.
 
-## Settings
+## Part 1: Timeout Unit Change
 
-Two new Kconfig settings under the existing MSP3520 menu:
+### Changes
 
-| Setting | Type | Default | Unit | Range |
-|---------|------|---------|------|-------|
-| Screen dim timeout | int | 10 | minutes | 0–60 |
-| Screen off timeout | int | 50 | minutes | 0–60 |
-| Fade out time | int | 1000 | ms | 0–5000 |
-| Fade in time | int | 1000 | ms | 0–5000 |
+- `dim_timeout_min` / `off_timeout_min` → `dim_timeout_s` / `off_timeout_s` in struct and throughout code.
+- `screen_protect_init()`: multiplies Kconfig values by 60 when storing.
+- `screen_protect_set_dim_timeout()` / `set_off_timeout()`: accept seconds directly.
+- Console commands `display dim <seconds>` / `display off <seconds>`: accept and display seconds.
+- `display status`: show timeout in seconds and idle in seconds.
+- `idle_check_cb`: compare against seconds × 1000 instead of minutes × 60000.
 
-## Behavior Matrix
+### Kconfig
 
-| Dim | Off | Behavior |
-|-----|-----|----------|
-| 0 | 0 | No power saving. Screen stays on. |
-| 0 | N | After N minutes idle → turn off backlight. |
-| D | 0 | After D minutes idle → dim backlight. Stays dimmed. |
-| D | N | After D minutes idle → dim. After N more minutes idle → turn off. |
+No change — stays in minutes with same defaults (10, 50).
 
-"Idle" = no touch input detected by LVGL indev.
+## Part 2: Integration Tests
 
-## Actions
+### Approach
 
-All backlight transitions use **LEDC hardware fade** for smooth, CPU-free brightness changes.
+- Unity test framework via `idf.py -T msp3520`
+- Tests run on the ESP32-S3 with actual hardware
+- Automated tests use LVGL `lv_test_indev` for simulated touch
+- Manual/interactive tests for physical touch verification (instruct user via serial, read feedback from monitor)
+- Focus on drift-catching, not exhaustive
 
-- **Startup**: Backlight initializes at 0%. After display and LVGL are ready, fade in to configured brightness over the fade-in time.
-- **Dim**: Fade backlight down to a low brightness level (e.g. 10%) over the configured fade-out time. The display panel stays on.
-- **Turn off**: Fade backlight to 0% over the configured fade-out time. Once fade completes, send display-off command (`DISPOFF`) to the ILI9488.
-- **Wake**: Any touch restores the screen. If display was off, send `DISPON` first. Then fade backlight up to previous brightness over the configured fade-in time. Timers are reset.
+### Automated Test Cases
 
-## Touch Handling on Wake
+#### Screen Protection State Machine
 
-When the screen is dimmed or off and the user touches:
-- The touch wakes the screen (restores backlight, resets timers).
-- Touch events are **consumed for ~250ms** after wake to prevent accidental button presses. The fade-in runs in hardware independently — touch is not blocked for its full duration.
-- Same applies on startup: touch events consumed for ~250ms after the fade-in begins.
+1. **Dim after timeout**: Set dim=3s, wait, verify state is DIMMED.
+2. **Off after dim+off**: Set dim=2s, off=2s, wait ~4s, verify state is OFF.
+3. **Skip dim when dim=0**: Set dim=0, off=3s, wait, verify goes straight to OFF.
+4. **No action when both=0**: Set both to 0, wait, verify state stays ACTIVE.
+5. **Wake from dimmed**: Force dimmed state, inject touch via test_indev, verify state transitions to WAKING then ACTIVE.
+6. **Wake from off**: Force off state, inject touch, verify DISPON + state restore.
 
-## Console Commands
+#### Touch Suppression
 
-Extend existing REPL:
-- `display dim <minutes>` — set dim timeout at runtime (0 = disable)
-- `display off <minutes>` — set off timeout at runtime (0 = disable)
-- `display status` — show current state (active/dimmed/off), timeouts, idle time
+7. **Wake touch consumed**: Create a test button, force dimmed, inject touch on button, verify button callback did NOT fire.
+8. **Touch passes after wake**: After wake + 250ms, inject touch on button, verify button callback fires.
 
-## Constraints
+#### Backlight
 
-- Timers must not interfere with the LVGL task or touch polling.
-- Must work with both IRQ and polling touch modes.
-- Backlight brightness before dimming must be remembered so it can be restored.
-- No new FreeRTOS tasks — use `esp_timer` or LVGL timer callbacks.
-- State transitions: `active → dimmed → off` (or `active → off` when dim=0).
-- Backlight transitions use LEDC hardware fade (`ledc_set_fade_with_time` + `ledc_fade_start`). The existing `backlight_set()` must be reworked to install the fade service and support fading.
-- After wake/startup, touch events are consumed for ~250ms (not the full fade-in duration).
+9. **Manual backlight updates state**: Call `msp3520_set_backlight(h, 50)`, verify saved_brightness=50 and state=ACTIVE.
 
-## Out of Scope
+### Interactive Test Cases (User-Driven)
 
-- Pixel shifting / screensaver animations.
-- Configurable dim brightness level (hardcode ~10% for now).
-- NVS persistence of timeout settings (Kconfig defaults only for now).
+These print instructions to serial and wait for user confirmation:
+
+10. **Physical touch wake**: "Screen will dim in 5s. Touch to wake. Did the screen restore? (y/n)"
+11. **Fade-in visible on boot**: "Reboot the device. Did you see a smooth fade-in? (y/n)"
+
+### Test Infrastructure
+
+- Test app at `components/msp3520/test_apps/` (ESP-IDF component test pattern)
+- Full component init in test setup (display, touch, LVGL all running)
+- Helper to set timeouts in seconds and wait for state transitions
+- State query via `screen_protect_get_status()`
+
+### Constraints
+
+- Tests need the LVGL task running — full component must be initialized.
+- Automated time-dependent tests use seconds-level timeouts (2-5s) for fast runs.
+- Tests must clean up state between runs.
+- Test app needs its own `sdkconfig.defaults` with appropriate settings.
