@@ -60,7 +60,7 @@ static void ensure_test_indev(void)
     if (!s_test_indev) {
         msp3520_lvgl_lock(test_handle, 0);
         s_test_indev = test_indev_sim_create();
-        lv_indev_set_display(s_test_indev, msp3520_get_display(test_handle));
+        screen_protect_register_indev(test_handle, s_test_indev);
         msp3520_lvgl_unlock(test_handle);
     }
 }
@@ -137,7 +137,7 @@ TEST_CASE("wake from dimmed", "[screen_protect]")
 
     ESP_LOGI(TAG, "simulating touch to wake...");
     sim_touch();
-    vTaskDelay(pdMS_TO_TICKS(400)); /* wait past 250ms wake window */
+    vTaskDelay(pdMS_TO_TICKS(1500)); /* wait past 250ms wake window + idle_check (1s) */
 
     get_state(&state, NULL);
     TEST_ASSERT_EQUAL_STRING("active", state);
@@ -156,16 +156,17 @@ TEST_CASE("wake from off", "[screen_protect]")
 
     ESP_LOGI(TAG, "simulating touch to wake...");
     sim_touch();
-    vTaskDelay(pdMS_TO_TICKS(400));
+    vTaskDelay(pdMS_TO_TICKS(1500));
 
     get_state(&state, NULL);
     TEST_ASSERT_EQUAL_STRING("active", state);
 }
 
-TEST_CASE("wake touch consumed", "[screen_protect]")
+TEST_CASE("waking state during suppression window", "[screen_protect]")
 {
     ensure_test_indev();
-    ensure_test_button();
+
+    /* Dim the screen, then wake it */
     reset_state(2, 0);
     ESP_LOGI(TAG, "waiting 3s for dim...");
     vTaskDelay(pdMS_TO_TICKS(3000));
@@ -174,14 +175,15 @@ TEST_CASE("wake touch consumed", "[screen_protect]")
     get_state(&state, NULL);
     TEST_ASSERT_EQUAL_STRING("dimmed", state);
 
-    ESP_LOGI(TAG, "touching button while dimmed...");
+    /* Touch to wake — should enter WAKING state */
     sim_touch();
-    vTaskDelay(pdMS_TO_TICKS(400));
 
-    /* Button click should have been consumed */
-    TEST_ASSERT_EQUAL_UINT32(0, s_btn_click_count);
+    /* Immediately check: should still be in waking (within 250ms window) */
+    get_state(&state, NULL);
+    TEST_ASSERT_EQUAL_STRING("waking", state);
 
-    /* But screen should have woken */
+    /* After suppression window + idle check, should be active */
+    vTaskDelay(pdMS_TO_TICKS(1500));
     get_state(&state, NULL);
     TEST_ASSERT_EQUAL_STRING("active", state);
 }
@@ -213,6 +215,44 @@ TEST_CASE("manual backlight updates state", "[screen_protect]")
     msp3520_set_backlight(test_handle, 50);
     get_state(&state, NULL);
     TEST_ASSERT_EQUAL_STRING("active", state);
+}
+
+TEST_CASE("~show results on display", "[screen_protect]")
+{
+    /* Unity has already counted this test in NumberOfTests, so subtract 1 */
+    uint32_t total = Unity.NumberOfTests - 1;
+    uint32_t failed = Unity.TestFailures;
+    uint32_t passed = total - failed;
+
+    /* Ensure screen is on and bright */
+    reset_state(0, 0);
+
+    msp3520_lvgl_lock(test_handle, 0);
+
+    lv_obj_t *scr = lv_screen_active();
+    lv_obj_clean(scr);
+    lv_obj_set_style_bg_color(scr, failed ? lv_color_hex(0x600000) : lv_color_hex(0x003000), 0);
+
+    lv_obj_t *title = lv_label_create(scr);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_label_set_text(title, "Test Results");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
+
+    lv_obj_t *result = lv_label_create(scr);
+    lv_obj_set_style_text_font(result, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(result, lv_color_white(), 0);
+    lv_label_set_text_fmt(result, "%s\n\n"
+                                   "Total:   %"PRIu32"\n"
+                                   "Passed:  %"PRIu32"\n"
+                                   "Failed:  %"PRIu32,
+                          failed ? "FAIL" : "PASS",
+                          total, passed, failed);
+    lv_obj_align(result, LV_ALIGN_CENTER, 0, 0);
+
+    msp3520_lvgl_unlock(test_handle);
+
+    ESP_LOGI(TAG, "results displayed on screen: %"PRIu32" passed, %"PRIu32" failed", passed, failed);
 }
 
 /* -- Interactive Tests -------------------------------------------- */

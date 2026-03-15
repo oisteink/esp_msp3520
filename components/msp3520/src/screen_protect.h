@@ -9,3 +9,4 @@ void screen_protect_set_off_timeout(msp3520_handle_t h, uint16_t seconds);
 void screen_protect_get_status(msp3520_handle_t h, const char **state,
                                 uint16_t *dim_s, uint16_t *off_s,
                                 uint32_t *idle_ms);
+void screen_protect_register_indev(msp3520_handle_t h, lv_indev_t *indev);

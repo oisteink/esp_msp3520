@@ -197,3 +197,9 @@ void screen_protect_get_status(msp3520_handle_t h, const char **state,
     if (off_s) *off_s = h->off_timeout_s;
     if (idle_ms) *idle_ms = lv_display_get_inactive_time(h->display);
 }
+
+void screen_protect_register_indev(msp3520_handle_t h, lv_indev_t *indev)
+{
+    lv_indev_add_event_cb(indev, wake_touch_cb, LV_EVENT_ALL, h);
+    lv_indev_set_display(indev, h->display);
+}
