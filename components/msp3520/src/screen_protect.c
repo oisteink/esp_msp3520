@@ -71,8 +71,8 @@ static void idle_check_cb(lv_timer_t *timer)
         return;
     }
 
-    uint32_t dim_ms = (uint32_t)h->dim_timeout_min * 60000;
-    uint32_t off_ms = (uint32_t)h->off_timeout_min * 60000;
+    uint32_t dim_ms = (uint32_t)h->dim_timeout_s * 1000;
+    uint32_t off_ms = (uint32_t)h->off_timeout_s * 1000;
 
     if (h->screen_state == SP_ACTIVE) {
         if (dim_ms > 0 && idle_ms >= dim_ms) {
@@ -138,8 +138,8 @@ static void wake_touch_cb(lv_event_t *e)
 esp_err_t screen_protect_init(msp3520_handle_t h)
 {
     h->saved_brightness = 100;
-    h->dim_timeout_min = CONFIG_MSP3520_SCREEN_DIM_TIMEOUT;
-    h->off_timeout_min = CONFIG_MSP3520_SCREEN_OFF_TIMEOUT;
+    h->dim_timeout_s = CONFIG_MSP3520_SCREEN_DIM_TIMEOUT * 60;
+    h->off_timeout_s = CONFIG_MSP3520_SCREEN_OFF_TIMEOUT * 60;
     h->dispoff_timer = NULL;
 
     /* Register touch wake callback on indev */
@@ -155,8 +155,8 @@ esp_err_t screen_protect_init(msp3520_handle_t h)
     /* Start with fade-in from dark */
     enter_waking(h);
 
-    ESP_LOGI(TAG, "initialized (dim=%um, off=%um, fade_in=%ums, fade_out=%ums)",
-             h->dim_timeout_min, h->off_timeout_min,
+    ESP_LOGI(TAG, "initialized (dim=%us, off=%us, fade_in=%ums, fade_out=%ums)",
+             h->dim_timeout_s, h->off_timeout_s,
              CONFIG_MSP3520_SCREEN_FADE_IN_MS, CONFIG_MSP3520_SCREEN_FADE_OUT_MS);
     return ESP_OK;
 }
@@ -176,24 +176,24 @@ void screen_protect_deinit(msp3520_handle_t h)
     }
 }
 
-void screen_protect_set_dim_timeout(msp3520_handle_t h, uint8_t minutes)
+void screen_protect_set_dim_timeout(msp3520_handle_t h, uint16_t seconds)
 {
-    h->dim_timeout_min = minutes;
-    ESP_LOGI(TAG, "dim timeout set to %u min", minutes);
+    h->dim_timeout_s = seconds;
+    ESP_LOGI(TAG, "dim timeout set to %us", seconds);
 }
 
-void screen_protect_set_off_timeout(msp3520_handle_t h, uint8_t minutes)
+void screen_protect_set_off_timeout(msp3520_handle_t h, uint16_t seconds)
 {
-    h->off_timeout_min = minutes;
-    ESP_LOGI(TAG, "off timeout set to %u min", minutes);
+    h->off_timeout_s = seconds;
+    ESP_LOGI(TAG, "off timeout set to %us", seconds);
 }
 
 void screen_protect_get_status(msp3520_handle_t h, const char **state,
-                                uint8_t *dim_min, uint8_t *off_min,
+                                uint16_t *dim_s, uint16_t *off_s,
                                 uint32_t *idle_ms)
 {
     if (state) *state = state_names[h->screen_state];
-    if (dim_min) *dim_min = h->dim_timeout_min;
-    if (off_min) *off_min = h->off_timeout_min;
+    if (dim_s) *dim_s = h->dim_timeout_s;
+    if (off_s) *off_s = h->off_timeout_s;
     if (idle_ms) *idle_ms = lv_display_get_inactive_time(h->display);
 }
