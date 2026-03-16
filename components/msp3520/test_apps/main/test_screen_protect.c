@@ -2,6 +2,7 @@
 #include "msp3520.h"
 #include "screen_protect.h"
 #include "test_indev_sim.h"
+#include "test_reboot.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -272,16 +273,18 @@ TEST_CASE("physical touch wake", "[interactive]")
     TEST_ASSERT_EQUAL_CHAR('y', c);
 }
 
-TEST_CASE("fade-in visible on boot", "[interactive]")
+TEST_CASE("fade-in on boot", "[screen_protect]")
 {
-    printf("\n>>> Reboot the device (Ctrl-T Ctrl-R) and watch the screen.\n");
-    printf(">>> Did you see a smooth fade-in from dark? (y/n): ");
-    fflush(stdout);
+    uint8_t result = reboot_test_get_result(REBOOT_FADEIN);
 
-    char c = 0;
-    while (c != 'y' && c != 'n') {
-        c = fgetc(stdin);
+    if (result == REBOOT_RESULT_NONE) {
+        /* No result yet — trigger reboot to observe fade-in */
+        ESP_LOGI(TAG, "triggering reboot for fade-in test...");
+        reboot_test_trigger(REBOOT_FADEIN);
+        /* does not return */
     }
-    printf("\n");
-    TEST_ASSERT_EQUAL_CHAR('y', c);
+
+    ESP_LOGI(TAG, "fade-in reboot test result: %s",
+             result == REBOOT_RESULT_PASS ? "PASS" : "FAIL");
+    TEST_ASSERT_EQUAL_UINT8(REBOOT_RESULT_PASS, result);
 }
