@@ -1,0 +1,10 @@
+# Disable task watchdog so unity_run_menu() doesn't trigger it
+# CONFIG_ESP_TASK_WDT_INIT is not set
+CONFIG_FREERTOS_HZ=1000
+
+# Font required by msp3520 calibration screen
+CONFIG_LV_FONT_MONTSERRAT_28=y
+
+# Screen protection: use short defaults for test convenience
+CONFIG_MSP3520_SCREEN_DIM_TIMEOUT=0
+CONFIG_MSP3520_SCREEN_OFF_TIMEOUT=0
