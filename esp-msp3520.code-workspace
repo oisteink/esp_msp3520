@@ -1,15 +1,21 @@
 {
 	"folders": [
 		{
-			"path": "examples/basic", "name": "Basic example"
+			"path": "examples/basic",
+			"name": "Basic example"
 		},
 		{
-			"path": "examples/finger-paint", "name": "Painting example"
+			"path": "examples/finger-paint",
+			"name": "Painting example"
 		},
 		{
-			"path": ".", "name": "repo"
+			"path": "components/msp3520/test_apps",
+			"name": "Test apps"
+		},
+		{
+			"path": ".",
+			"name": "repo"
 		}
-
 	],
 	"settings": {}
 }

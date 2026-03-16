@@ -1,0 +1,12 @@
+{
+  "autoApproveTools": true,
+  "autoApproveShell": true,
+  "allowedTools": ["*"],
+  "allowedShellCommands": ["*"],
+  "filesystem": {
+    "mode": "workspace-write"
+  },
+  "git": {
+    "autoCommit": true
+  }
+}
