@@ -9,7 +9,7 @@
 			"name": "Painting example"
 		},
 		{
-			"path": "components/msp3520/test_apps",
+			"path": "test_apps",
 			"name": "Test apps"
 		},
 		{

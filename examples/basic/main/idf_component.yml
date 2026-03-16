@@ -1,2 +1,4 @@
 dependencies:
   idf: ">=5.0.0"
+  esp_msp3520:
+    path: '../../../'

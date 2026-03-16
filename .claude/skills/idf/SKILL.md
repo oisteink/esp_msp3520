@@ -23,7 +23,7 @@ If a new firmware target is added, follow the same pattern.
 ### Create or reuse a session
 
 ```bash
-tmux has-session -t basic 2>/dev/null || tmux new-session -d -s basic -c /home/ok/src/esp-msp3520/examples/basic -x 220 -y 50
+tmux has-session -t basic 2>/dev/null || tmux new-session -d -s basic -c /home/ok/src/esp_msp3520/examples/basic -x 220 -y 50
 ```
 
 Always reuse if it exists. Source the IDF environment on creation:
@@ -43,8 +43,8 @@ tmux send-keys -t basic "idf.py build" Enter
 Use the helper scripts to capture or poll pane content:
 
 ```bash
-python3 /home/ok/src/esp-msp3520/.claude/skills/idf/scripts/capture_pane.py basic 500
-python3 /home/ok/src/esp-msp3520/.claude/skills/idf/scripts/poll_pane.py basic "error\|Build complete" 120
+python3 /home/ok/src/esp_msp3520/.claude/skills/idf/scripts/capture_pane.py basic 500
+python3 /home/ok/src/esp_msp3520/.claude/skills/idf/scripts/poll_pane.py basic "error\|Build complete" 120
 ```
 
 ---
@@ -158,7 +158,7 @@ If the firmware includes `esp_console`, send commands through the monitor:
 ```bash
 tmux send-keys -t paint "help" Enter
 sleep 1
-python3 /home/ok/src/esp-msp3520/.claude/skills/idf/scripts/capture_pane.py basic 30
+python3 /home/ok/src/esp_msp3520/.claude/skills/idf/scripts/capture_pane.py basic 30
 ```
 
 Only send commands when the REPL prompt is visible. Check with `capture_pane.py` first.

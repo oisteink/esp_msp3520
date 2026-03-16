@@ -1,0 +1,3 @@
+dependencies:
+  esp_msp3520:
+    path: '../..'

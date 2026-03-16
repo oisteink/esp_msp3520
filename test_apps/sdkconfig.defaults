@@ -1,3 +1,6 @@
+# Target ESP32-S3
+CONFIG_IDF_TARGET="esp32s3"
+
 # Disable task watchdog so unity_run_menu() doesn't trigger it
 # CONFIG_ESP_TASK_WDT_INIT is not set
 CONFIG_FREERTOS_HZ=1000
