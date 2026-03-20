@@ -15,7 +15,7 @@ Each firmware gets its own session, created on demand.
 | Firmware | Session | Working directory |
 |----------|---------|-------------------|
 | `basic-example` | `basic` | `examples/basic/` |
-| `paint-example` | `paint` | `examples/finger-paint/` |
+| `paint-example` | `paint` | `examples/paint/` |
 | `tests` | `tests` | not implemented yet |
 
 If a new firmware target is added, follow the same pattern.

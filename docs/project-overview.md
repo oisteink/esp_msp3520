@@ -86,7 +86,7 @@ These settings reduce worst-case touch-to-pixel latency from ~40ms to ~12ms with
 - `CONFIG_LV_DEF_REFR_PERIOD=10` — 10ms indev read / display refresh (default 33ms)
 - `CONFIG_MSP3520_TOUCH_SPI_CLOCK_KHZ=2000` — 2 MHz touch SPI (default 1 MHz, max 2.5 MHz)
 
-### finger-paint extras
+### paint extras
 
 - `LV_USE_SYSMON`, `LV_USE_PERF_MONITOR` — LVGL performance overlay (toggled via `display perf on`)
 - Uses direct buffer drawing with partial invalidation instead of the LVGL canvas layer API, which invalidates the entire canvas on every `lv_canvas_finish_layer()` call. This keeps FPS at 100 even while drawing.
@@ -113,7 +113,7 @@ The msp3520 component provides optional REPL commands (registered via `msp3520_r
 
 ```sh
 source ~/esp/v5.5.3/esp-idf/export.sh
-cd examples/basic          # or examples/finger-paint
+cd examples/basic          # or examples/paint
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
