@@ -6,7 +6,7 @@
 
 #include <stdlib.h>
 
-static const char *TAG = "finger-paint";
+static const char *TAG = "paint";
 
 /* -- Config -------------------------------------------------------- */
 

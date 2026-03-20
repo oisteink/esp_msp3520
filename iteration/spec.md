@@ -1,30 +1,32 @@
-# Spec: Restructure repo to standard IDF standalone component layout
+# Spec: Paint Example Renaming
 
-## Problem
+## Goal
+Rename the paint example to properly reflect that it requires a pointer/stylus for optimal use.
 
-The msp3520 component is nested under `components/msp3520/` inside a repo that exists solely for this component. This adds an unnecessary directory level. Additionally, the repo name (`esp-msp3520`) doesn't match the component name (`msp3520`), which breaks the IDF convention that directory name = component name.
+## Current State
+- Example directory: `examples/paint/`
+- Main source: `examples/paint/main/finger-paint.c`
+- Directory name already uses "paint"
+- Code contains hardcoded "finger-paint" references
 
-## Current layout
+## Requirements
 
-```
-esp-msp3520/                    (repo root)
-  components/msp3520/           (component lives here)
-    CMakeLists.txt
-    Kconfig
-    idf_component.yml
-    include/
-    src/
-    test_apps/
-  examples/
-  docs/
-```
+### 1. Rename Files and References
+- Rename `finger-paint.c` to `paint.c`
+- Remove or update any hardcoded "finger-paint" strings in the source code (check for tags, logs, etc.)
 
-## Desired outcome
+### 2. Add Documentation
+- Create `examples/paint/README.md` with usage instructions
+- Document that this example requires a pointer/stylus
+- Explain the reason: drawing algorithm creates "straws" with fingers due to touch tracking jitter
 
-- Repo follows standard ESP-IDF standalone component layout (component files at root)
-- Component renamed from `msp3520` to `esp_msp3520` to match repo directory name
-- Repo directory renamed from `esp-msp3520` to `esp_msp3520` (underscore)
-- All references updated: headers, Kconfig symbols, REQUIRES, includes, etc.
-- Examples and test_apps wire up the component dependency the idiomatic way
-- Build succeeds for examples and test_apps after restructure
-- No functional code changes
+### 3. What NOT to Change
+- Git commit history (no git rewrites)
+- No changes to past commits
+
+## Acceptance Criteria
+- ✅ `examples/paint/main/` contains `paint.c` instead of `finger-paint.c`
+- ✅ No hardcoded "finger-paint" references remain in source code
+- ✅ `examples/paint/README.md` exists and explains the stylus requirement
+- ✅ Directory and project names are consistently "paint"
+- ✅ Git history remains unchanged

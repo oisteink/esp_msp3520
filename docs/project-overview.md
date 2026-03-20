@@ -18,8 +18,8 @@
 │   ├── basic/                    # Simple tap-counter demo
 │   │   ├── main/main.c
 │   │   └── sdkconfig.defaults
-│   └── finger-paint/             # Full-screen drawing app
-│       ├── main/finger-paint.c
+│   └── paint/                    # Full-screen drawing app
+│       ├── main/paint.c
 │       └── sdkconfig.defaults
 ├── iteration/                    # Current iteration stage docs
 │   └── history/                  # Archived iteration docs
@@ -36,7 +36,7 @@ The **msp3520 component** (`components/msp3520/`) wraps all hardware and LVGL in
 
 - **`examples/basic/`** — Minimal example: button with tap counter, coordinate display, REPL console.
 
-- **`examples/finger-paint/`** — Full-screen canvas drawing app with color picker and clear button. Border grid shows touch edge-reach dead zones. LVGL perf monitor togglable via CLI.
+- **`examples/paint/`** — Full-screen canvas drawing app with color picker and clear button. Uses Bresenham line algorithm with round brush (3px). **Stylus/pointer recommended for best results** — finger touch creates "straws" due to tracking jitter. Border grid shows touch edge-reach dead zones. LVGL perf monitor togglable via CLI.
 
 ## External Components
 
